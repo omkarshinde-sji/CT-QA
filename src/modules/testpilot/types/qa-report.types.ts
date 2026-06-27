@@ -11,11 +11,21 @@ export const TestCaseSchema = z.object({
   category: z.string().optional(),
 });
 
+export const ChangeItemSchema = z.object({
+  area: z.string(),
+  files: z.array(z.string()).optional(),
+  before: z.string(),
+  after: z.string(),
+  technicalNote: z.string().optional(),
+  whatToVerify: z.string(),
+});
+
 export const FeatureSummarySchema = z.object({
   summary: z.string(),
   before: z.string().optional(),
   after: z.string().optional(),
   userFlow: z.string().optional(),
+  changes: z.array(ChangeItemSchema).optional(),
 });
 
 export const RequirementItemSchema = z.object({
@@ -54,6 +64,7 @@ export const QaReportSchema = z.object({
 });
 
 export type TestCase = z.infer<typeof TestCaseSchema>;
+export type ChangeItem = z.infer<typeof ChangeItemSchema>;
 export type FeatureSummary = z.infer<typeof FeatureSummarySchema>;
 export type RequirementItem = z.infer<typeof RequirementItemSchema>;
 export type ImpactedModule = z.infer<typeof ImpactedModuleSchema>;
@@ -63,7 +74,7 @@ export type QaReport = z.infer<typeof QaReportSchema>;
 
 export interface QaReportWithMeta extends QaReport {
   id: string;
-  taskId: string;
+  taskId: string | null;
   prNumber: number;
   githubRepo?: string | null;
   createdAt: string;
@@ -71,10 +82,11 @@ export interface QaReportWithMeta extends QaReport {
 }
 
 export interface GenerateTestPilotRequest {
-  taskId: string;
   prNumber: number;
   regenerate?: boolean;
-  repo?: string;
+  repo: string;
+  taskTitle?: string;
+  taskDescription?: string;
 }
 
 export interface GenerateTestPilotResponse {

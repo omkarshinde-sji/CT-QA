@@ -1,13 +1,12 @@
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { TestPilotContext } from "../types/qa-report.types.ts";
-import { fetchPullRequestContext } from "../services/github.service.ts";
-import { fetchTaskContext, getRepoFromTaskMetadata } from "../services/task.service.ts";
+import { fetchPullRequestContext, normalizeGithubRepo } from "../services/github.service.ts";
 import { getProjectContext } from "../services/project-context.service.ts";
 
 export interface BuildContextInput {
-  taskId: string;
   prNumber: number;
-  repoOverride?: string;
+  repo: string;
+  taskTitle?: string;
+  taskDescription?: string;
 }
 
 async function computeContextHash(input: string): Promise<string> {
@@ -17,30 +16,34 @@ async function computeContextHash(input: string): Promise<string> {
 }
 
 export async function buildTestPilotContext(
-  supabase: SupabaseClient,
   input: BuildContextInput,
 ): Promise<TestPilotContext> {
-  const task = await fetchTaskContext(supabase, input.taskId);
-  const repo = input.repoOverride ?? getRepoFromTaskMetadata(task.metadata);
-  const pr = await fetchPullRequestContext(input.prNumber, repo);
+  const normalizedRepo = normalizeGithubRepo(input.repo);
+  if (!normalizedRepo) {
+    throw new Error("Invalid GitHub repo. Use owner/repo or paste a full GitHub URL.");
+  }
 
+  const pr = await fetchPullRequestContext(input.prNumber, normalizedRepo);
   const changedPaths = pr.changedFiles.map((f) => f.filename);
   const project = getProjectContext(changedPaths);
 
+  const manualTitle = input.taskTitle?.trim() ?? "";
+  const manualDescription = input.taskDescription?.trim() ?? "";
+
   const contextHash = await computeContextHash(
-    `${task.id}:${task.updatedAt}:${pr.headSha}:${pr.repo}`,
+    `${pr.repo}:${pr.headSha}:${input.prNumber}:${manualTitle}:${manualDescription}`,
   );
 
   return {
-    taskId: task.id,
+    taskId: null,
     prNumber: input.prNumber,
     repo: pr.repo,
     contextHash,
     task: {
-      title: task.title,
-      description: task.description,
-      status: task.status,
-      comments: task.comments,
+      title: manualTitle || pr.title,
+      description: manualDescription || pr.body,
+      status: manualTitle ? "manual" : "from_pr",
+      comments: [],
     },
     pr: {
       title: pr.title,

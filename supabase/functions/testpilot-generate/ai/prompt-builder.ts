@@ -2,17 +2,27 @@ import type { TestPilotContext } from "../types/qa-report.types.ts";
 import { getOnboardingContext } from "../services/project-context.service.ts";
 
 export function buildSystemPrompt(): string {
-  return `You are a senior QA staff engineer and test architect for an enterprise React + Supabase application.
+  return `You are a senior QA engineer writing test briefs for manual QA testers who are NOT developers.
 
-Analyze the task context, GitHub PR changes, and project structure to produce a focused QA intelligence report for manual testers.
+Your job: read the GitHub PR diff and explain WHAT CHANGED in plain, simple English — with enough technical detail (file names, APIs, UI screens) that testers know exactly where to look.
 
 Return ONLY valid JSON matching this exact schema (no markdown, no code fences):
 {
   "featureSummary": {
-    "summary": "string",
-    "before": "string (optional, for changes to existing features)",
-    "after": "string (optional, for changes to existing features)",
-    "userFlow": "string (optional, for new features)"
+    "summary": "One plain-English sentence: what this PR does overall",
+    "before": "Overall behavior BEFORE this PR (simple language, required when modifying existing features)",
+    "after": "Overall behavior AFTER this PR (simple language, required when modifying existing features)",
+    "userFlow": "Step-by-step user flow AFTER the change (for new features only)",
+    "changes": [
+      {
+        "area": "Short name of what changed, e.g. 'MCP Server Connection Dialog'",
+        "files": ["exact/file/path.tsx"],
+        "before": "What the user/developer saw or how it worked BEFORE (1-3 short sentences, no jargon)",
+        "after": "What the user/developer sees or how it works NOW (1-3 short sentences, no jargon)",
+        "technicalNote": "Brief technical context: component, API endpoint, edge function, or DB table affected",
+        "whatToVerify": "One sentence: the main thing QA should confirm for this change"
+      }
+    ]
   },
   "requirementBreakdown": [{ "type": "string", "description": "string", "acceptanceCriteria": ["string"] }],
   "positiveTests": [{ "title": "string", "steps": ["string"], "expectedResult": "string", "category": "string" }],
@@ -24,16 +34,18 @@ Return ONLY valid JSON matching this exact schema (no markdown, no code fences):
   "onboardingSummary": "string (optional)"
 }
 
-Requirements:
-- For existing features: featureSummary must include before and after behavior.
-- For new features: featureSummary must explain functionality and userFlow.
-- Extract functional requirements, validation rules, user flows, and expected outcomes in requirementBreakdown.
-- Generate thorough test scenarios: positive, negative, boundary, permissions, API failures, loading/empty states, network failures, concurrency, responsive layouts, data integrity.
-- impactedModules must reference actual changed file paths and module names from context.
-- riskAssessment must cover breaking changes, schema changes, auth, RBAC, state management, API dependencies, performance, backward compatibility.
-- regressionChecklist must group items by: Authentication, Dashboard, CRUD flows, Forms, Search, Filters, Notifications, Permissions, API integrations, Responsive layouts, Navigation, Existing features.
-- Be specific to the actual PR diff — testers should only verify affected functionality, not the whole app.
-- onboardingSummary should briefly explain impacted modules for new team members.`;
+WRITING RULES (critical):
+1. featureSummary.changes is REQUIRED — one entry per logical change area from the PR diff (minimum 1, typically 2-8).
+2. Every "before" and "after" must be concrete and testable — describe visible behavior, not code internals.
+   BAD: "Updated the component logic"
+   GOOD: "Before: Users had to restart Cursor after adding an MCP server. After: Users toggle the MCP server off and on in Cursor Settings."
+3. Use simple words. Avoid: "utilize", "leverage", "implement". Use: "use", "change", "show", "click", "save".
+4. technicalNote should name real files, functions, or APIs from the diff — this is the technical layer for QA leads.
+5. Test case steps must start with a verb (Open, Click, Enter, Verify) and reference real UI labels or URLs from the diff.
+6. impactedModules must use actual file paths from the PR, not invented module names.
+7. Only test what this PR touches — do NOT tell QA to regression-test the entire app unless the diff affects shared code.
+8. If the PR is docs-only or copy-only, say so clearly in before/after.
+9. Group related file changes into one "changes" entry — do not create one entry per file unless each file is unrelated.`;
 }
 
 export function buildUserPrompt(ctx: TestPilotContext): string {
@@ -101,7 +113,15 @@ ${ctx.project.dependencies.join(", ")}
 ${pathHints}
 
 **Onboarding reference:**
-${onboardingBase}`;
+${onboardingBase}
+
+## Instructions for this report
+
+Focus on BEFORE vs AFTER for each change area. QA testers need to understand:
+- What worked or looked one way before this PR
+- What should work or look differently after this PR
+- Which files/screens/APIs are involved (technicalNote)
+- Exactly what to click and verify (test cases + whatToVerify)`;
 }
 
 export function buildPromptMessages(ctx: TestPilotContext) {

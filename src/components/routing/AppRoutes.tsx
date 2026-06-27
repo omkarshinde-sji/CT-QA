@@ -64,6 +64,7 @@ export function AppRoutes() {
           <>
             <Route element={<SpaceLayout />}>
               {globalSpaceRoutes}
+              {testpilotRoutes}
               {spaceRoutes}
             </Route>
             <Route element={<AdminRoute />}>

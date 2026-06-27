@@ -282,7 +282,8 @@ export const queryKeys = {
 
   testpilot: {
     all: ["testpilot"] as const,
-    reports: (taskId?: string) => ["testpilot", "reports", taskId] as const,
+    reports: (taskId?: string, repo?: string, prNumber?: number) =>
+      ["testpilot", "reports", taskId, repo, prNumber] as const,
     report: (id: string) => ["testpilot", "report", id] as const,
   },
 
@@ -448,11 +449,8 @@ export const invalidateKeys = {
     queryClient.invalidateQueries({ queryKey: ["automation", "workflows"] });
     queryClient.invalidateQueries({ queryKey: ["automation", "executions"] });
   },
-  testpilot: (queryClient: any, taskId?: string) => {
+  testpilot: (queryClient: any) => {
     queryClient.invalidateQueries({ queryKey: queryKeys.testpilot.all });
-    if (taskId) {
-      queryClient.invalidateQueries({ queryKey: queryKeys.testpilot.reports(taskId) });
-    }
   },
   zohoDeal: (queryClient: any, dealId: string) => {
     queryClient.invalidateQueries({ queryKey: queryKeys.zoho.attachments(dealId) });

@@ -47,6 +47,10 @@ export function parseAndValidateQaReport(content: string): ParseResult {
 function normalizeReport(report: QaReport): QaReport {
   return {
     ...report,
+    featureSummary: {
+      ...report.featureSummary,
+      changes: report.featureSummary.changes ?? [],
+    },
     requirementBreakdown: report.requirementBreakdown ?? [],
     positiveTests: report.positiveTests ?? [],
     negativeTests: report.negativeTests ?? [],

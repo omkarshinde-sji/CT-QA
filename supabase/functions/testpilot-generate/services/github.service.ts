@@ -19,23 +19,52 @@ interface GithubConfig {
   repo: string;
 }
 
+/** Accept owner/repo or full GitHub URLs. */
+export function normalizeGithubRepo(input: string): string | null {
+  let value = input.trim();
+  if (!value) return null;
+
+  value = value.replace(/\.git$/i, "");
+
+  const urlMatch = value.match(
+    /(?:https?:\/\/)?(?:www\.)?github\.com\/([^/?#]+)\/([^/?#]+)/i,
+  );
+  if (urlMatch) {
+    return `${urlMatch[1]}/${urlMatch[2]}`;
+  }
+
+  const slashIndex = value.indexOf("/");
+  if (slashIndex === -1) return null;
+
+  const owner = value.slice(0, slashIndex).trim();
+  const repo = value.slice(slashIndex + 1).split(/[/?#]/)[0].trim();
+  if (!owner || !repo) return null;
+
+  return `${owner}/${repo}`;
+}
+
 function getGithubConfig(repoOverride?: string): GithubConfig {
   const token = Deno.env.get("GITHUB_TOKEN");
   if (!token) {
-    throw new Error("GITHUB_TOKEN is not configured in edge function secrets");
+    throw new Error(
+      "GITHUB_TOKEN is not configured. Add it in Supabase Dashboard → Project Settings → Edge Functions → Secrets.",
+    );
   }
 
   let owner = Deno.env.get("GITHUB_OWNER") ?? "";
   let repo = Deno.env.get("GITHUB_REPO") ?? "";
 
-  if (repoOverride?.includes("/")) {
-    const [o, r] = repoOverride.split("/");
+  const normalized = repoOverride ? normalizeGithubRepo(repoOverride) : null;
+  if (normalized) {
+    const [o, r] = normalized.split("/");
     owner = o;
     repo = r;
   }
 
   if (!owner || !repo) {
-    throw new Error("GITHUB_OWNER and GITHUB_REPO must be configured");
+    throw new Error(
+      "GitHub repo is required. Provide owner/repo or a GitHub URL in the request.",
+    );
   }
 
   return { token, owner, repo };
