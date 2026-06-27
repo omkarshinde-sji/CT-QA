@@ -4,7 +4,9 @@ import { getOnboardingContext } from "../services/project-context.service.ts";
 export function buildSystemPrompt(): string {
   return `You are a senior QA engineer writing test briefs for manual QA testers who are NOT developers.
 
-Your job: read the GitHub PR diff and explain WHAT CHANGED in plain, simple English — with enough technical detail (file names, APIs, UI screens) that testers know exactly where to look.
+Your job: read the GitHub PR diff(s) and explain WHAT CHANGED in plain, simple English — with enough technical detail (file names, APIs, UI screens) that testers know exactly where to look.
+
+When multiple PRs are linked, treat them as one combined feature delivery — merge overlapping changes, note which PR introduced which area, and do not duplicate test cases.
 
 Return ONLY valid JSON matching this exact schema (no markdown, no code fences):
 {
@@ -43,24 +45,76 @@ WRITING RULES (critical):
 4. technicalNote should name real files, functions, or APIs from the diff — this is the technical layer for QA leads.
 5. Test case steps must start with a verb (Open, Click, Enter, Verify) and reference real UI labels or URLs from the diff.
 6. impactedModules must use actual file paths from the PR, not invented module names.
-7. Only test what this PR touches — do NOT tell QA to regression-test the entire app unless the diff affects shared code.
+7. Only test what the linked PR(s) touch — do NOT tell QA to regression-test the entire app unless the diff affects shared code.
 8. If the PR is docs-only or copy-only, say so clearly in before/after.
-9. Group related file changes into one "changes" entry — do not create one entry per file unless each file is unrelated.`;
+9. Group related file changes into one "changes" entry — do not create one entry per file unless each file is unrelated.
+10. When multiple PRs are linked, mention PR numbers in technicalNote when a change is specific to one PR.`;
 }
 
-export function buildUserPrompt(ctx: TestPilotContext): string {
-  const commentsBlock = ctx.task.comments.length
-    ? ctx.task.comments.map((c) => `- [${c.createdAt}] ${c.author}: ${c.body}`).join("\n")
-    : "No comments";
+function buildPrSections(ctx: TestPilotContext): string {
+  if (ctx.prs.length <= 1) {
+    const pr = ctx.prs[0];
+    const filesBlock = pr.changedFiles
+      .map((f) => {
+        const patch = f.patch ? `\n${f.patch}` : "";
+        return `### ${f.status}: ${f.filename}${patch}`;
+      })
+      .join("\n\n");
+    const commitsBlock = pr.commitMessages.map((m) => `- ${m}`).join("\n");
 
-  const filesBlock = ctx.pr.changedFiles
+    return `**PR #${pr.prNumber}:** ${pr.title}
+**Head SHA:** ${pr.headSha}
+
+**PR Description:**
+${pr.body ?? "No PR description"}
+
+**Changed Files Summary:**
+${pr.diffSummary}
+
+**Commit Messages:**
+${commitsBlock}
+
+**File Diffs:**
+${filesBlock}`;
+  }
+
+  const perPr = ctx.prs
+    .map((pr) => {
+      const commitsBlock = pr.commitMessages.map((m) => `- ${m}`).join("\n");
+      return `### PR #${pr.prNumber}: ${pr.title}
+**Head SHA:** ${pr.headSha}
+**Description:** ${pr.body ?? "No PR description"}
+
+**Files in this PR:**
+${pr.diffSummary}
+
+**Commits:**
+${commitsBlock}`;
+    })
+    .join("\n\n");
+
+  const mergedFilesBlock = ctx.pr.changedFiles
     .map((f) => {
       const patch = f.patch ? `\n${f.patch}` : "";
       return `### ${f.status}: ${f.filename}${patch}`;
     })
     .join("\n\n");
 
-  const commitsBlock = ctx.pr.commitMessages.map((m) => `- ${m}`).join("\n");
+  return `**Linked PRs:** ${ctx.prNumbers.map((n) => `#${n}`).join(", ")} (${ctx.prs.length} total)
+
+${perPr}
+
+---
+
+## Combined file diffs (deduplicated across all PRs)
+
+${mergedFilesBlock}`;
+}
+
+export function buildUserPrompt(ctx: TestPilotContext): string {
+  const commentsBlock = ctx.task.comments.length
+    ? ctx.task.comments.map((c) => `- [${c.createdAt}] ${c.author}: ${c.body}`).join("\n")
+    : "No comments";
 
   const modulesBlock = ctx.project.modules
     .map((m) => `- ${m.name} (${m.id}): ${m.description}`)
@@ -71,35 +125,30 @@ export function buildUserPrompt(ctx: TestPilotContext): string {
     : "No path-based module hints";
 
   const onboardingBase = getOnboardingContext();
+  const prBlock = buildPrSections(ctx);
 
   return `## Feature Information
 
 **Task Title:** ${ctx.task.title}
-**Task Status:** ${ctx.task.status}
+**Task Status:** ${ctx.task.status}${
+    ctx.activeCollabTaskId
+      ? `\n**ActiveCollab Task ID:** ${ctx.activeCollabTaskId}${
+          ctx.activeCollabProjectId ? ` (Project ${ctx.activeCollabProjectId})` : ""
+        }`
+      : ""
+  }
 
 **Task Description:**
 ${ctx.task.description ?? "No description"}
 
-**Comments:**
+**Task Comments (from ActiveCollab / manual context):**
 ${commentsBlock}
 
 ## PR Changes
 
-**PR #${ctx.prNumber}:** ${ctx.pr.title}
 **Repository:** ${ctx.repo}
-**Head SHA:** ${ctx.pr.headSha}
 
-**PR Description:**
-${ctx.pr.body ?? "No PR description"}
-
-**Changed Files Summary:**
-${ctx.pr.diffSummary}
-
-**Commit Messages:**
-${commitsBlock}
-
-**File Diffs:**
-${filesBlock}
+${prBlock}
 
 ## Project Context
 
@@ -117,9 +166,9 @@ ${onboardingBase}
 
 ## Instructions for this report
 
-Focus on BEFORE vs AFTER for each change area. QA testers need to understand:
-- What worked or looked one way before this PR
-- What should work or look differently after this PR
+Focus on BEFORE vs AFTER for each change area across ALL linked PRs. QA testers need to understand:
+- What worked or looked one way before these PRs
+- What should work or look differently after these PRs
 - Which files/screens/APIs are involved (technicalNote)
 - Exactly what to click and verify (test cases + whatToVerify)`;
 }

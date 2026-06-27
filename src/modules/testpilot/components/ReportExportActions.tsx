@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { QaReportWithMeta } from "../types/qa-report.types";
+import { formatPrNumbersLabel } from "../lib/parsePrNumbers";
 import {
   copyReportToClipboard,
   exportReportDocx,
@@ -41,7 +42,8 @@ export function ReportExportActions({
   isRegenerating,
 }: ReportExportActionsProps) {
   const [exporting, setExporting] = useState<string | null>(null);
-  const filename = `qa-report-pr-${report.prNumber}`;
+  const prLabel = formatPrNumbersLabel(report.prNumbers?.length ? report.prNumbers : [report.prNumber]);
+  const filename = `qa-report-${report.prNumbers?.length ? report.prNumbers.join("-") : report.prNumber}`;
 
   const runExport = async (key: string, fn: () => void | Promise<void>, successMsg: string) => {
     setExporting(key);
@@ -67,7 +69,7 @@ export function ReportExportActions({
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="truncate text-sm font-semibold">QA Report</h2>
             <Badge variant="outline" className="font-mono text-xs">
-              PR #{report.prNumber}
+              PR {prLabel}
             </Badge>
             {report.cached && (
               <Badge variant="secondary" className="text-xs">

@@ -20,6 +20,7 @@ import { useGenerateTestPilotReport } from "../hooks/useTestPilot";
 import { useQAReports } from "../hooks/useQAReports";
 import { useTestPilotFormState } from "../hooks/useTestPilotFormState";
 import { isValidGithubRepo, normalizeGithubRepo } from "../lib/normalizeGithubRepo";
+import { formatPrNumbersLabel } from "../lib/parsePrNumbers";
 import type { QaReportWithMeta } from "../types/qa-report.types";
 
 const LOADING_STEPS = [
@@ -33,39 +34,51 @@ export default function TestPilotPage() {
   const {
     taskTitle,
     taskDescription,
-    prNumber,
+    prNumbers,
     repoOverride,
+    acProjectId,
+    acTaskId,
+    acTaskComments,
     report,
     setTaskTitle,
     setTaskDescription,
-    setPrNumber,
+    addPrNumber,
+    removePrNumber,
     setRepoOverride,
+    setAcProjectId,
+    setAcTaskId,
+    applyActiveCollabContext,
     setReport,
   } = useTestPilotFormState();
 
   const generate = useGenerateTestPilotReport();
-  const pr = Number(prNumber);
   const normalizedRepo = normalizeGithubRepo(repoOverride) ?? "";
 
   const debouncedRepo = useDebouncedValue(normalizedRepo, 400);
-  const debouncedPr = useDebouncedValue(pr > 0 ? pr : 0, 400);
+  const debouncedPrKey = useDebouncedValue(prNumbers.join(","), 400);
+  const debouncedPrNumbers = debouncedPrKey
+    ? debouncedPrKey.split(",").map(Number).filter((n) => n > 0)
+    : [];
 
   const { data: history = [], isPending: historyPending } = useQAReports({
     repo: debouncedRepo || undefined,
-    prNumber: debouncedPr > 0 ? debouncedPr : undefined,
+    prNumbers: debouncedPrNumbers.length ? debouncedPrNumbers : undefined,
   });
 
   const handleGenerate = (regenerate = false) => {
-    if (!pr || pr < 1) return;
+    if (!prNumbers.length) return;
     if (!normalizedRepo) return;
 
     generate.mutate(
       {
-        prNumber: pr,
+        prNumbers,
         regenerate,
         repo: normalizedRepo,
         taskTitle: taskTitle.trim() || undefined,
         taskDescription: taskDescription.trim() || undefined,
+        taskComments: acTaskComments.length ? acTaskComments : undefined,
+        activeCollabProjectId: acProjectId ? Number(acProjectId) : undefined,
+        activeCollabTaskId: acTaskId ? Number(acTaskId) : undefined,
       },
       {
         onSuccess: (data: QaReportWithMeta) => setReport(data),
@@ -73,8 +86,8 @@ export default function TestPilotPage() {
     );
   };
 
-  const canGenerate = Boolean(prNumber && pr > 0 && isValidGithubRepo(repoOverride));
-  const showHistory = Boolean(debouncedRepo && debouncedPr > 0);
+  const canGenerate = Boolean(prNumbers.length > 0 && isValidGithubRepo(repoOverride));
+  const showHistory = Boolean(debouncedRepo && debouncedPrNumbers.length > 0);
   const showHistorySkeleton = showHistory && historyPending && history.length === 0;
   const isInitialGenerate = generate.isPending && !report;
 
@@ -121,12 +134,18 @@ export default function TestPilotPage() {
                 <TaskPrPicker
                   taskTitle={taskTitle}
                   taskDescription={taskDescription}
-                  prNumber={prNumber}
+                  prNumbers={prNumbers}
                   repoOverride={repoOverride}
+                  acProjectId={acProjectId}
+                  acTaskId={acTaskId}
                   onTaskTitleChange={setTaskTitle}
                   onTaskDescriptionChange={setTaskDescription}
-                  onPrNumberChange={setPrNumber}
+                  onAddPrNumber={addPrNumber}
+                  onRemovePrNumber={removePrNumber}
                   onRepoOverrideChange={setRepoOverride}
+                  onAcProjectIdChange={setAcProjectId}
+                  onAcTaskIdChange={setAcTaskId}
+                  onActiveCollabContextLoaded={applyActiveCollabContext}
                   disabled={generate.isPending}
                 />
 
@@ -144,9 +163,9 @@ export default function TestPilotPage() {
                   {generate.isPending ? "Generating…" : "Generate QA Report"}
                 </Button>
 
-                {!canGenerate && (repoOverride || prNumber) && (
+                {!canGenerate && (repoOverride || prNumbers.length > 0) && (
                   <p className="text-center text-xs text-muted-foreground">
-                    Enter a valid repo and PR number to continue
+                    Enter a valid repo and at least one PR number to continue
                   </p>
                 )}
 
@@ -170,7 +189,7 @@ export default function TestPilotPage() {
                     History
                   </CardTitle>
                   <CardDescription className="font-mono text-xs">
-                    {debouncedRepo} · PR #{debouncedPr}
+                    {debouncedRepo} · PR {formatPrNumbersLabel(debouncedPrNumbers)}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -257,7 +276,7 @@ export default function TestPilotPage() {
                   <div className="mt-8 grid w-full max-w-lg gap-3 sm:grid-cols-3">
                     {[
                       { step: "1", label: "Paste repo URL" },
-                      { step: "2", label: "Enter PR #" },
+                      { step: "2", label: "Add PR #s" },
                       { step: "3", label: "Generate" },
                     ].map((item) => (
                       <div

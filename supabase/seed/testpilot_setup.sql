@@ -62,6 +62,16 @@ CREATE INDEX IF NOT EXISTS idx_qa_reports_created_at
 CREATE INDEX IF NOT EXISTS idx_qa_reports_repo_pr
   ON public.qa_reports (github_repo, pr_number);
 
+ALTER TABLE public.qa_reports
+  ADD COLUMN IF NOT EXISTS pr_numbers integer[] DEFAULT NULL;
+
+UPDATE public.qa_reports
+SET pr_numbers = ARRAY[pr_number]
+WHERE pr_numbers IS NULL AND pr_number IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_qa_reports_pr_numbers
+  ON public.qa_reports USING GIN (pr_numbers);
+
 ALTER TABLE public.qa_reports ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Authenticated users can read qa_reports" ON public.qa_reports;

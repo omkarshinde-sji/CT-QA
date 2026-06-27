@@ -144,3 +144,57 @@ export async function fetchPullRequestContext(
     repo: `${owner}/${repo}`,
   };
 }
+
+export function normalizePrNumbers(input: number[]): number[] {
+  const unique = [...new Set(input.filter((n) => Number.isFinite(n) && n > 0))];
+  unique.sort((a, b) => a - b);
+  return unique;
+}
+
+/** Fetch multiple PRs in parallel and merge file diffs (later PR wins on same file). */
+export async function fetchPullRequestContexts(
+  prNumbers: number[],
+  repoOverride?: string,
+): Promise<{ prNumbers: number[]; prs: GithubPrContext[]; merged: GithubPrContext }> {
+  const normalized = normalizePrNumbers(prNumbers);
+  if (!normalized.length) {
+    throw new Error("At least one pull request number is required.");
+  }
+
+  const prs = await Promise.all(
+    normalized.map((prNumber) => fetchPullRequestContext(prNumber, repoOverride)),
+  );
+
+  const fileMap = new Map<string, { filename: string; status: string; patch?: string; fromPr: number }>();
+  for (const pr of prs) {
+    for (const file of pr.changedFiles) {
+      fileMap.set(file.filename, { ...file, fromPr: pr.prNumber });
+    }
+  }
+
+  const mergedFiles = [...fileMap.values()].map(({ fromPr: _fromPr, ...file }) => file);
+  const mergedCommits = prs.flatMap((pr) =>
+    pr.commitMessages.map((m) => `[PR #${pr.prNumber}] ${m}`),
+  );
+  const mergedDiffSummary = prs
+    .map((pr) => `--- PR #${pr.prNumber}: ${pr.title} ---\n${pr.diffSummary}`)
+    .join("\n\n");
+
+  const merged: GithubPrContext = {
+    prNumber: normalized[0],
+    title: prs.length === 1
+      ? prs[0].title
+      : `${prs[0].title} (+ ${prs.length - 1} linked PR${prs.length > 2 ? "s" : ""})`,
+    body: prs
+      .map((pr) => `### PR #${pr.prNumber}: ${pr.title}\n${pr.body ?? "_No description_"}`)
+      .join("\n\n"),
+    state: prs.map((p) => p.state).includes("open") ? "open" : prs[prs.length - 1].state,
+    changedFiles: mergedFiles,
+    commitMessages: mergedCommits,
+    diffSummary: mergedDiffSummary,
+    headSha: prs.map((p) => p.headSha).join(":"),
+    repo: prs[0].repo,
+  };
+
+  return { prNumbers: normalized, prs, merged };
+}
