@@ -76,17 +76,29 @@ export interface QaReportWithMeta extends QaReport {
   id: string;
   taskId: string | null;
   prNumber: number;
+  prNumbers: number[];
   githubRepo?: string | null;
   createdAt: string;
   cached?: boolean;
 }
 
+export interface TaskCommentInput {
+  author: string;
+  body: string;
+  createdAt: string;
+}
+
 export interface GenerateTestPilotRequest {
-  prNumber: number;
+  prNumbers: number[];
+  /** @deprecated use prNumbers */
+  prNumber?: number;
   regenerate?: boolean;
   repo: string;
   taskTitle?: string;
   taskDescription?: string;
+  taskComments?: TaskCommentInput[];
+  activeCollabProjectId?: number;
+  activeCollabTaskId?: number;
 }
 
 export interface GenerateTestPilotResponse {

@@ -63,13 +63,38 @@ export const QaReportSchema = z.object({
   onboardingSummary: z.string().optional(),
 });
 
+const TaskCommentInputSchema = z.object({
+  author: z.string(),
+  body: z.string(),
+  createdAt: z.string(),
+});
+
 export const GenerateRequestSchema = z.object({
-  prNumber: z.number().int().positive(),
+  prNumbers: z.array(z.number().int().positive()).min(1).max(10).optional(),
+  /** @deprecated use prNumbers */
+  prNumber: z.number().int().positive().optional(),
   regenerate: z.boolean().optional(),
   repo: z.string().min(1),
   taskTitle: z.string().optional(),
   taskDescription: z.string().optional(),
-});
+  taskComments: z.array(TaskCommentInputSchema).optional(),
+  activeCollabProjectId: z.number().int().positive().optional(),
+  activeCollabTaskId: z.number().int().positive().optional(),
+}).refine(
+  (data) => (data.prNumbers?.length ?? 0) > 0 || data.prNumber != null,
+  { message: "At least one PR number is required (prNumbers or prNumber)" },
+);
+
+export function resolvePrNumbers(request: z.infer<typeof GenerateRequestSchema>): number[] {
+  const raw = request.prNumbers?.length
+    ? request.prNumbers
+    : request.prNumber != null
+    ? [request.prNumber]
+    : [];
+  const unique = [...new Set(raw.filter((n) => Number.isFinite(n) && n > 0))];
+  unique.sort((a, b) => a - b);
+  return unique;
+}
 
 export type TestCase = z.infer<typeof TestCaseSchema>;
 export type FeatureSummary = z.infer<typeof FeatureSummarySchema>;
@@ -81,16 +106,32 @@ export type QaReport = z.infer<typeof QaReportSchema>;
 export type GenerateRequest = z.infer<typeof GenerateRequestSchema>;
 
 export interface TestPilotContext {
+  /** Internal Control Tower task UUID (tasks table). Never set for ActiveCollab-only context. */
   taskId: string | null;
+  activeCollabTaskId: number | null;
+  activeCollabProjectId: number | null;
+  /** Primary PR (lowest number) — used for DB pr_number column */
   prNumber: number;
+  /** All linked PR numbers, sorted ascending */
+  prNumbers: number[];
   repo: string;
   contextHash: string;
+  prs: Array<{
+    prNumber: number;
+    title: string;
+    body: string | null;
+    headSha: string;
+    diffSummary: string;
+    commitMessages: string[];
+    changedFiles: Array<{ filename: string; status: string; patch?: string }>;
+  }>;
   task: {
     title: string;
     description: string | null;
     status: string;
     comments: Array<{ author: string; body: string; createdAt: string }>;
   };
+  /** Merged view across all linked PRs */
   pr: {
     title: string;
     body: string | null;
@@ -111,6 +152,7 @@ export interface QaReportRecord {
   id: string;
   task_id: string | null;
   pr_number: number;
+  pr_numbers: number[] | null;
   github_repo: string | null;
   context_hash: string;
   feature_summary: FeatureSummary;
@@ -134,14 +176,20 @@ export function recordToReport(
   id: string;
   taskId: string | null;
   prNumber: number;
+  prNumbers: number[];
   githubRepo?: string | null;
   createdAt: string;
 } {
+  const prNumbers = record.pr_numbers?.length
+    ? [...record.pr_numbers].sort((a, b) => a - b)
+    : [record.pr_number];
+
   return {
     id: record.id,
     taskId: record.task_id,
     githubRepo: record.github_repo,
     prNumber: record.pr_number,
+    prNumbers,
     createdAt: record.created_at,
     featureSummary: record.feature_summary,
     requirementBreakdown: record.requirements,

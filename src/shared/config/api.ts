@@ -31,6 +31,7 @@ export const API = {
   // TestPilot / Spec2Test AI
   TESTPILOT: {
     GENERATE: "testpilot-generate",
+    ACTIVECOLLAB: "testpilot-activecollab",
   },
 
   // Knowledge

@@ -1,12 +1,15 @@
 import type { TestPilotContext } from "../types/qa-report.types.ts";
-import { fetchPullRequestContext, normalizeGithubRepo } from "../services/github.service.ts";
+import { fetchPullRequestContexts } from "../services/github.service.ts";
 import { getProjectContext } from "../services/project-context.service.ts";
 
 export interface BuildContextInput {
-  prNumber: number;
+  prNumbers: number[];
   repo: string;
   taskTitle?: string;
   taskDescription?: string;
+  taskComments?: Array<{ author: string; body: string; createdAt: string }>;
+  activeCollabProjectId?: number;
+  activeCollabTaskId?: number;
 }
 
 async function computeContextHash(input: string): Promise<string> {
@@ -18,40 +21,51 @@ async function computeContextHash(input: string): Promise<string> {
 export async function buildTestPilotContext(
   input: BuildContextInput,
 ): Promise<TestPilotContext> {
-  const normalizedRepo = normalizeGithubRepo(input.repo);
-  if (!normalizedRepo) {
-    throw new Error("Invalid GitHub repo. Use owner/repo or paste a full GitHub URL.");
-  }
+  const { prNumbers, prs, merged } = await fetchPullRequestContexts(input.prNumbers, input.repo);
 
-  const pr = await fetchPullRequestContext(input.prNumber, normalizedRepo);
-  const changedPaths = pr.changedFiles.map((f) => f.filename);
+  const changedPaths = merged.changedFiles.map((f) => f.filename);
   const project = getProjectContext(changedPaths);
 
   const manualTitle = input.taskTitle?.trim() ?? "";
   const manualDescription = input.taskDescription?.trim() ?? "";
+  const taskComments = input.taskComments ?? [];
+  const activeCollabTaskId = input.activeCollabTaskId ?? null;
+  const activeCollabProjectId = input.activeCollabProjectId ?? null;
 
   const contextHash = await computeContextHash(
-    `${pr.repo}:${pr.headSha}:${input.prNumber}:${manualTitle}:${manualDescription}`,
+    `${merged.repo}:${merged.headSha}:${prNumbers.join(",")}:${manualTitle}:${manualDescription}:${activeCollabTaskId ?? ""}:${JSON.stringify(taskComments)}`,
   );
 
   return {
     taskId: null,
-    prNumber: input.prNumber,
-    repo: pr.repo,
+    activeCollabTaskId,
+    activeCollabProjectId,
+    prNumbers,
+    prNumber: prNumbers[0],
+    repo: merged.repo,
     contextHash,
-    task: {
-      title: manualTitle || pr.title,
-      description: manualDescription || pr.body,
-      status: manualTitle ? "manual" : "from_pr",
-      comments: [],
-    },
-    pr: {
+    prs: prs.map((pr) => ({
+      prNumber: pr.prNumber,
       title: pr.title,
       body: pr.body,
-      changedFiles: pr.changedFiles,
-      commitMessages: pr.commitMessages,
-      diffSummary: pr.diffSummary,
       headSha: pr.headSha,
+      diffSummary: pr.diffSummary,
+      commitMessages: pr.commitMessages,
+      changedFiles: pr.changedFiles,
+    })),
+    task: {
+      title: manualTitle || merged.title,
+      description: manualDescription || merged.body,
+      status: activeCollabTaskId ? "activecollab" : manualTitle ? "manual" : "from_pr",
+      comments: taskComments,
+    },
+    pr: {
+      title: merged.title,
+      body: merged.body,
+      changedFiles: merged.changedFiles,
+      commitMessages: merged.commitMessages,
+      diffSummary: merged.diffSummary,
+      headSha: merged.headSha,
     },
     project,
   };

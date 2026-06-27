@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { validateAuth, authErrorResponse } from "./auth-middleware.ts";
-import { GenerateRequestSchema } from "./types/qa-report.types.ts";
+import { GenerateRequestSchema, resolvePrNumbers } from "./types/qa-report.types.ts";
 import { generateQaReport } from "./services/qa-generation.service.ts";
 
 const corsHeaders = {
@@ -51,7 +51,7 @@ serve(async (req) => {
 
     console.log("[testpilot-generate] request", {
       repo: parsed.data.repo,
-      prNumber: parsed.data.prNumber,
+      prNumbers: resolvePrNumbers(parsed.data),
       hasTaskTitle: Boolean(parsed.data.taskTitle?.trim()),
       regenerate: parsed.data.regenerate ?? false,
     });

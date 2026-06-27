@@ -1,4 +1,5 @@
 import type { QaReportWithMeta } from "../types/qa-report.types";
+import { formatPrNumbersLabel } from "./parsePrNumbers";
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -34,8 +35,9 @@ function formatTestCases(title: string, cases: QaReportWithMeta["positiveTests"]
 
 export function reportToMarkdown(report: QaReportWithMeta): string {
   const fs = report.featureSummary;
+  const prLabel = formatPrNumbersLabel(report.prNumbers?.length ? report.prNumbers : [report.prNumber]);
   const featureParts = [
-    `# QA Report — PR #${report.prNumber}`,
+    `# QA Report — PR ${prLabel}`,
     "",
     report.githubRepo ? `**Repository:** ${report.githubRepo}` : "",
     report.taskId ? `**Task ID:** ${report.taskId}` : "",
@@ -146,6 +148,7 @@ export async function copyReportToClipboard(report: QaReportWithMeta) {
 }
 
 export async function exportReportPdf(report: QaReportWithMeta, filename = "qa-report") {
+  const prLabel = formatPrNumbersLabel(report.prNumbers?.length ? report.prNumbers : [report.prNumber]);
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const margin = 14;
@@ -186,7 +189,7 @@ export async function exportReportPdf(report: QaReportWithMeta, filename = "qa-r
     y += 2;
   };
 
-  addHeading(`QA Report — PR #${report.prNumber}`, 16);
+  addHeading(`QA Report — PR ${prLabel}`, 16);
   if (report.githubRepo) addParagraph(`Repository: ${report.githubRepo}`);
   addParagraph(`Generated: ${new Date(report.createdAt).toLocaleString()}`);
   addParagraph(report.cached ? "Source: Cached report" : "Source: Freshly generated");
@@ -282,6 +285,7 @@ export async function exportReportPdf(report: QaReportWithMeta, filename = "qa-r
 }
 
 export async function exportReportDocx(report: QaReportWithMeta, filename = "qa-report") {
+  const prLabel = formatPrNumbersLabel(report.prNumbers?.length ? report.prNumbers : [report.prNumber]);
   const {
     Document,
     Packer,
@@ -307,7 +311,7 @@ export async function exportReportDocx(report: QaReportWithMeta, filename = "qa-
     });
 
   const children: InstanceType<typeof Paragraph>[] = [
-    heading(`QA Report — PR #${report.prNumber}`, HeadingLevel.TITLE),
+    heading(`QA Report — PR ${prLabel}`, HeadingLevel.TITLE),
   ];
 
   if (report.githubRepo) children.push(body(`Repository: ${report.githubRepo}`));

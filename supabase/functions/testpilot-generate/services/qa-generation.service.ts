@@ -4,6 +4,7 @@ import {
   type QaReport,
   type QaReportRecord,
   recordToReport,
+  resolvePrNumbers,
 } from "../types/qa-report.types.ts";
 import { buildTestPilotContext } from "../ai/context-builder.ts";
 import { runTestPilotAgent } from "../ai/testpilot-agent.ts";
@@ -40,7 +41,7 @@ async function saveReport(
   supabase: SupabaseClient,
   input: {
     taskId: string | null;
-    prNumber: number;
+    prNumbers: number[];
     repo: string;
     contextHash: string;
     report: QaReport;
@@ -51,7 +52,8 @@ async function saveReport(
 ): Promise<QaReportRecord> {
   const row = {
     task_id: input.taskId,
-    pr_number: input.prNumber,
+    pr_number: input.prNumbers[0],
+    pr_numbers: input.prNumbers,
     github_repo: input.repo,
     context_hash: input.contextHash,
     feature_summary: input.report.featureSummary,
@@ -83,18 +85,23 @@ export async function generateQaReport(
   request: GenerateRequest,
   userId: string,
 ): Promise<GenerateQaReportResult> {
+  const prNumbers = resolvePrNumbers(request);
+
   const ctx = await buildTestPilotContext({
-    prNumber: request.prNumber,
+    prNumbers,
     repo: request.repo,
     taskTitle: request.taskTitle,
     taskDescription: request.taskDescription,
+    taskComments: request.taskComments,
+    activeCollabProjectId: request.activeCollabProjectId,
+    activeCollabTaskId: request.activeCollabTaskId,
   });
 
   if (!request.regenerate) {
     const cached = await getCachedReport(
       supabase,
       ctx.repo,
-      request.prNumber,
+      ctx.prNumbers[0],
       ctx.contextHash,
     );
     if (cached) {
@@ -109,7 +116,7 @@ export async function generateQaReport(
   const agentResult = await runTestPilotAgent(ctx);
   const saved = await saveReport(supabase, {
     taskId: ctx.taskId,
-    prNumber: request.prNumber,
+    prNumbers: ctx.prNumbers,
     repo: ctx.repo,
     contextHash: ctx.contextHash,
     report: agentResult.report,

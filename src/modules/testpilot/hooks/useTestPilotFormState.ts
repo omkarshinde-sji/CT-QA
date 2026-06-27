@@ -1,13 +1,17 @@
 import { useCallback, useSyncExternalStore } from "react";
+import type { ActiveCollabTaskComment } from "../types/activecollab.types";
 import type { QaReportWithMeta } from "../types/qa-report.types";
 
-const STORAGE_KEY = "testpilot:session:v1";
+const STORAGE_KEY = "testpilot:session:v3";
 
 export interface TestPilotFormFields {
   taskTitle: string;
   taskDescription: string;
-  prNumber: string;
+  prNumbers: number[];
   repoOverride: string;
+  acProjectId: string;
+  acTaskId: string;
+  acTaskComments: ActiveCollabTaskComment[];
 }
 
 interface TestPilotSessionState {
@@ -18,8 +22,11 @@ interface TestPilotSessionState {
 const DEFAULT_FORM: TestPilotFormFields = {
   taskTitle: "",
   taskDescription: "",
-  prNumber: "",
+  prNumbers: [],
   repoOverride: "",
+  acProjectId: "",
+  acTaskId: "",
+  acTaskComments: [],
 };
 
 const DEFAULT_SESSION: TestPilotSessionState = {
@@ -27,15 +34,37 @@ const DEFAULT_SESSION: TestPilotSessionState = {
   report: null,
 };
 
+function migrateLegacyForm(parsed: Partial<TestPilotFormFields> & { prNumber?: string }): TestPilotFormFields {
+  const base = { ...DEFAULT_FORM, ...parsed, acTaskComments: parsed.acTaskComments ?? [] };
+
+  if ((!base.prNumbers || base.prNumbers.length === 0) && parsed.prNumber?.trim()) {
+    const n = Number(parsed.prNumber);
+    if (Number.isFinite(n) && n > 0) {
+      base.prNumbers = [n];
+    }
+  }
+
+  if (!Array.isArray(base.prNumbers)) {
+    base.prNumbers = [];
+  }
+
+  return base;
+}
+
 function loadSessionState(): TestPilotSessionState {
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_SESSION;
-    const parsed = JSON.parse(raw) as Partial<TestPilotSessionState>;
-    return {
-      form: { ...DEFAULT_FORM, ...parsed.form },
-      report: parsed.report ?? null,
-    };
+    for (const key of [STORAGE_KEY, "testpilot:session:v2", "testpilot:session:v1"]) {
+      const raw = sessionStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw) as Partial<TestPilotSessionState> & {
+        form?: Partial<TestPilotFormFields> & { prNumber?: string };
+      };
+      return {
+        form: migrateLegacyForm(parsed.form ?? {}),
+        report: parsed.report ?? null,
+      };
+    }
+    return DEFAULT_SESSION;
   } catch {
     return DEFAULT_SESSION;
   }
@@ -86,13 +115,65 @@ export function useTestPilotFormState() {
     setSessionState((prev) => ({ ...prev, form: { ...prev.form, taskDescription } }));
   }, []);
 
-  const setPrNumber = useCallback((prNumber: string) => {
-    setSessionState((prev) => ({ ...prev, form: { ...prev.form, prNumber } }));
+  const setPrNumbers = useCallback((prNumbers: number[]) => {
+    const normalized = [...new Set(prNumbers.filter((n) => n > 0))].sort((a, b) => a - b);
+    setSessionState((prev) => ({ ...prev, form: { ...prev.form, prNumbers: normalized } }));
+  }, []);
+
+  const addPrNumber = useCallback((pr: number) => {
+    if (!Number.isFinite(pr) || pr <= 0) return;
+    setSessionState((prev) => {
+      const next = [...new Set([...prev.form.prNumbers, Math.floor(pr)])].sort((a, b) => a - b);
+      return { ...prev, form: { ...prev.form, prNumbers: next } };
+    });
+  }, []);
+
+  const removePrNumber = useCallback((pr: number) => {
+    setSessionState((prev) => ({
+      ...prev,
+      form: {
+        ...prev.form,
+        prNumbers: prev.form.prNumbers.filter((n) => n !== pr),
+      },
+    }));
   }, []);
 
   const setRepoOverride = useCallback((repoOverride: string) => {
     setSessionState((prev) => ({ ...prev, form: { ...prev.form, repoOverride } }));
   }, []);
+
+  const setAcProjectId = useCallback((acProjectId: string) => {
+    setSessionState((prev) => ({
+      ...prev,
+      form: { ...prev.form, acProjectId, acTaskId: "", acTaskComments: [] },
+    }));
+  }, []);
+
+  const setAcTaskId = useCallback((acTaskId: string) => {
+    setSessionState((prev) => ({
+      ...prev,
+      form: { ...prev.form, acTaskId, acTaskComments: [] },
+    }));
+  }, []);
+
+  const setAcTaskComments = useCallback((acTaskComments: ActiveCollabTaskComment[]) => {
+    setSessionState((prev) => ({ ...prev, form: { ...prev.form, acTaskComments } }));
+  }, []);
+
+  const applyActiveCollabContext = useCallback(
+    (input: { title: string; description: string; comments: ActiveCollabTaskComment[] }) => {
+      setSessionState((prev) => ({
+        ...prev,
+        form: {
+          ...prev.form,
+          taskTitle: input.title,
+          taskDescription: input.description,
+          acTaskComments: input.comments,
+        },
+      }));
+    },
+    [],
+  );
 
   const setReport = useCallback((report: QaReportWithMeta | null) => {
     setSessionState((prev) => ({ ...prev, report }));
@@ -103,8 +184,14 @@ export function useTestPilotFormState() {
     report: session.report,
     setTaskTitle,
     setTaskDescription,
-    setPrNumber,
+    setPrNumbers,
+    addPrNumber,
+    removePrNumber,
     setRepoOverride,
+    setAcProjectId,
+    setAcTaskId,
+    setAcTaskComments,
+    applyActiveCollabContext,
     setReport,
   };
 }

@@ -8,6 +8,7 @@ interface QaReportRow {
   id: string;
   task_id: string | null;
   pr_number: number;
+  pr_numbers: number[] | null;
   github_repo: string | null;
   feature_summary: QaReportWithMeta["featureSummary"];
   requirements: QaReportWithMeta["requirementBreakdown"];
@@ -22,10 +23,15 @@ interface QaReportRow {
 }
 
 function mapRow(row: QaReportRow): QaReportWithMeta {
+  const prNumbers = row.pr_numbers?.length
+    ? [...row.pr_numbers].sort((a, b) => a - b)
+    : [row.pr_number];
+
   return {
     id: row.id,
     taskId: row.task_id,
     prNumber: row.pr_number,
+    prNumbers,
     githubRepo: row.github_repo,
     createdAt: row.created_at,
     featureSummary: row.feature_summary,
@@ -42,23 +48,24 @@ function mapRow(row: QaReportRow): QaReportWithMeta {
 
 export interface QAReportsFilter {
   repo?: string;
-  prNumber?: number;
+  prNumbers?: number[];
 }
 
 export function useQAReports(filter?: QAReportsFilter) {
   const { user } = useAuth();
   const repo = filter?.repo;
-  const prNumber = filter?.prNumber;
-  const canFetch = Boolean(user && repo && prNumber && prNumber > 0);
+  const prNumbers = filter?.prNumbers ?? [];
+  const canFetch = Boolean(user && repo && prNumbers.length > 0);
 
   return useQuery({
-    queryKey: queryKeys.testpilot.reports(undefined, repo, prNumber),
+    queryKey: queryKeys.testpilot.reports(undefined, repo, prNumbers.join(",")),
     queryFn: async (): Promise<QaReportWithMeta[]> => {
+      const prList = prNumbers.join(",");
       const { data, error } = await supabase
         .from("qa_reports")
         .select("*")
         .eq("github_repo", repo!)
-        .eq("pr_number", prNumber!)
+        .or(`pr_number.in.(${prList}),pr_numbers.ov.{${prList}}`)
         .order("created_at", { ascending: false })
         .limit(20);
 
