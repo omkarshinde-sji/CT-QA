@@ -50,8 +50,9 @@ serve(async (req) => {
     }
 
     console.log("[testpilot-generate] request", {
-      taskId: parsed.data.taskId,
+      repo: parsed.data.repo,
       prNumber: parsed.data.prNumber,
+      hasTaskTitle: Boolean(parsed.data.taskTitle?.trim()),
       regenerate: parsed.data.regenerate ?? false,
     });
 

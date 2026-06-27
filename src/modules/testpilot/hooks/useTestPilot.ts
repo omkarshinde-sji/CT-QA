@@ -24,7 +24,7 @@ export function useGenerateTestPilotReport() {
       return { ...data.report, cached: data.cached };
     },
     onSuccess: (report) => {
-      invalidateKeys.testpilot(queryClient, report.taskId);
+      invalidateKeys.testpilot(queryClient);
       toast.success(
         report.cached ? "Loaded cached QA report" : "QA report generated successfully",
       );

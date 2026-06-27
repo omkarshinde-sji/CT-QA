@@ -56,10 +56,13 @@ import ProjectStatusSettings from "@/pages/admin/ProjectStatusSettings";
 import ProjectModules from "@/pages/admin/ProjectModules";
 import DashboardWidgets from "@/pages/admin/DashboardWidgets";
 import AgencyRoles from "@/pages/admin/AgencyRoles";
+import TestPilotPage from "@/modules/testpilot/pages/TestPilotPage";
 
 export const operationsSpaceRoutes = (
   <>
     <Route path="/operations/dashboard" element={<OperationsSpaceDashboard />} />
+
+    <Route path="/operations/testpilot" element={<TestPilotPage />} />
 
     <Route element={<ModuleRoute module="actions" requiresFeatureFlag="enableTasks" />}>
       <Route path="/operations/tasks" element={<TasksPage />} />

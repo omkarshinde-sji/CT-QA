@@ -10,20 +10,20 @@ import { runTestPilotAgent } from "../ai/testpilot-agent.ts";
 
 export interface GenerateQaReportResult {
   success: boolean;
-  report: QaReport & { id: string; taskId: string; prNumber: number; createdAt: string };
+  report: ReturnType<typeof recordToReport>;
   cached: boolean;
 }
 
 export async function getCachedReport(
   supabase: SupabaseClient,
-  taskId: string,
+  repo: string,
   prNumber: number,
   contextHash: string,
 ): Promise<QaReportRecord | null> {
   const { data, error } = await supabase
     .from("qa_reports")
     .select("*")
-    .eq("task_id", taskId)
+    .eq("github_repo", repo)
     .eq("pr_number", prNumber)
     .eq("context_hash", contextHash)
     .maybeSingle();
@@ -39,7 +39,7 @@ export async function getCachedReport(
 async function saveReport(
   supabase: SupabaseClient,
   input: {
-    taskId: string;
+    taskId: string | null;
     prNumber: number;
     repo: string;
     contextHash: string;
@@ -70,7 +70,7 @@ async function saveReport(
 
   const { data, error } = await supabase
     .from("qa_reports")
-    .upsert(row, { onConflict: "task_id,pr_number,context_hash" })
+    .upsert(row, { onConflict: "github_repo,pr_number,context_hash" })
     .select("*")
     .single();
 
@@ -83,16 +83,17 @@ export async function generateQaReport(
   request: GenerateRequest,
   userId: string,
 ): Promise<GenerateQaReportResult> {
-  const ctx = await buildTestPilotContext(supabase, {
-    taskId: request.taskId,
+  const ctx = await buildTestPilotContext({
     prNumber: request.prNumber,
-    repoOverride: request.repo,
+    repo: request.repo,
+    taskTitle: request.taskTitle,
+    taskDescription: request.taskDescription,
   });
 
   if (!request.regenerate) {
     const cached = await getCachedReport(
       supabase,
-      request.taskId,
+      ctx.repo,
       request.prNumber,
       ctx.contextHash,
     );
@@ -107,7 +108,7 @@ export async function generateQaReport(
 
   const agentResult = await runTestPilotAgent(ctx);
   const saved = await saveReport(supabase, {
-    taskId: request.taskId,
+    taskId: ctx.taskId,
     prNumber: request.prNumber,
     repo: ctx.repo,
     contextHash: ctx.contextHash,

@@ -1,181 +1,299 @@
-import { useState } from "react";
-import { FlaskConical, Loader2, Sparkles } from "lucide-react";
+import {
+  Clock,
+  FlaskConical,
+  GitPullRequest,
+  History,
+  Loader2,
+  Sparkles,
+  Zap,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import { useDebouncedValue } from "@/lib/componentOptimization";
 import { TaskPrPicker } from "../components/TaskPrPicker";
 import { QAReportViewer } from "../components/QAReportViewer";
 import { ReportExportActions } from "../components/ReportExportActions";
 import { useGenerateTestPilotReport } from "../hooks/useTestPilot";
 import { useQAReports } from "../hooks/useQAReports";
+import { useTestPilotFormState } from "../hooks/useTestPilotFormState";
+import { isValidGithubRepo, normalizeGithubRepo } from "../lib/normalizeGithubRepo";
 import type { QaReportWithMeta } from "../types/qa-report.types";
 
+const LOADING_STEPS = [
+  "Fetching PR diff from GitHub",
+  "Analyzing changed files",
+  "Building before/after summary",
+  "Generating test cases",
+];
+
 export default function TestPilotPage() {
-  const [taskId, setTaskId] = useState("");
-  const [prNumber, setPrNumber] = useState("");
-  const [repoOverride, setRepoOverride] = useState("");
-  const [report, setReport] = useState<QaReportWithMeta | null>(null);
+  const {
+    taskTitle,
+    taskDescription,
+    prNumber,
+    repoOverride,
+    report,
+    setTaskTitle,
+    setTaskDescription,
+    setPrNumber,
+    setRepoOverride,
+    setReport,
+  } = useTestPilotFormState();
 
   const generate = useGenerateTestPilotReport();
-  const { data: history = [], isLoading: historyLoading } = useQAReports(taskId || undefined);
+  const pr = Number(prNumber);
+  const normalizedRepo = normalizeGithubRepo(repoOverride) ?? "";
+
+  const debouncedRepo = useDebouncedValue(normalizedRepo, 400);
+  const debouncedPr = useDebouncedValue(pr > 0 ? pr : 0, 400);
+
+  const { data: history = [], isPending: historyPending } = useQAReports({
+    repo: debouncedRepo || undefined,
+    prNumber: debouncedPr > 0 ? debouncedPr : undefined,
+  });
 
   const handleGenerate = (regenerate = false) => {
-    const pr = Number(prNumber);
-    if (!taskId) return;
     if (!pr || pr < 1) return;
+    if (!normalizedRepo) return;
 
     generate.mutate(
       {
-        taskId,
         prNumber: pr,
         regenerate,
-        repo: repoOverride.trim() || undefined,
+        repo: normalizedRepo,
+        taskTitle: taskTitle.trim() || undefined,
+        taskDescription: taskDescription.trim() || undefined,
       },
       {
-        onSuccess: (data) => setReport(data),
+        onSuccess: (data: QaReportWithMeta) => setReport(data),
       },
     );
   };
 
-  const canGenerate = Boolean(taskId && prNumber && Number(prNumber) > 0);
+  const canGenerate = Boolean(prNumber && pr > 0 && isValidGithubRepo(repoOverride));
+  const showHistory = Boolean(debouncedRepo && debouncedPr > 0);
+  const showHistorySkeleton = showHistory && historyPending && history.length === 0;
+  const isInitialGenerate = generate.isPending && !report;
 
   return (
-    <div className="container max-w-5xl space-y-6 py-6">
-      <div className="flex items-start gap-3">
-        <div className="rounded-lg bg-primary/10 p-2">
-          <FlaskConical className="h-6 w-6 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">TestPilot AI</h1>
-          <p className="text-muted-foreground">
-            Generate focused QA intelligence from a task and GitHub PR — so testers know exactly
-            what changed and what to verify.
-          </p>
+    <div className="min-h-full">
+      {/* Hero */}
+      <div className="relative overflow-hidden border-b bg-gradient-to-br from-primary/10 via-background to-background">
+        <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-10 left-1/3 h-40 w-40 rounded-full bg-primary/5 blur-2xl" />
+        <div className="container relative max-w-6xl py-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="ai-glow-sm flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary/15 ring-1 ring-primary/20">
+                <FlaskConical className="h-7 w-7 text-primary" />
+              </div>
+              <div>
+                <div className="mb-1 flex flex-wrap items-center gap-2">
+                  <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">TestPilot AI</h1>
+                  <Badge variant="secondary" className="gap-1">
+                    <Zap className="h-3 w-3" />
+                    QA Copilot
+                  </Badge>
+                </div>
+                <p className="max-w-xl text-sm text-muted-foreground sm:text-base">
+                  Turn any GitHub PR into a clear QA brief — before/after changes, test cases, and
+                  risks in plain English.
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Generate QA Report</CardTitle>
-          <CardDescription>
-            Select the task, enter the PR number, and TestPilot will analyze the diff and produce
-            test scenarios, risks, and a regression checklist.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <TaskPrPicker
-            taskId={taskId}
-            prNumber={prNumber}
-            repoOverride={repoOverride}
-            onTaskIdChange={setTaskId}
-            onPrNumberChange={setPrNumber}
-            onRepoOverrideChange={setRepoOverride}
-            disabled={generate.isPending}
-          />
+      <div className="container max-w-6xl py-6">
+        <div className="grid gap-6 lg:grid-cols-12 lg:items-start">
+          {/* Left: Form */}
+          <div className="space-y-4 lg:col-span-4 lg:sticky lg:top-6">
+            <Card className="overflow-hidden shadow-sm">
+              <CardHeader className="border-b bg-muted/30 pb-4">
+                <CardTitle className="text-lg">New QA Report</CardTitle>
+                <CardDescription>Connect a PR and generate your test brief</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5 pt-5">
+                <TaskPrPicker
+                  taskTitle={taskTitle}
+                  taskDescription={taskDescription}
+                  prNumber={prNumber}
+                  repoOverride={repoOverride}
+                  onTaskTitleChange={setTaskTitle}
+                  onTaskDescriptionChange={setTaskDescription}
+                  onPrNumberChange={setPrNumber}
+                  onRepoOverrideChange={setRepoOverride}
+                  disabled={generate.isPending}
+                />
 
-          <div className="flex flex-wrap gap-2">
-            <Button
-              onClick={() => handleGenerate(false)}
-              disabled={!canGenerate || generate.isPending}
-            >
-              {generate.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Sparkles className="mr-2 h-4 w-4" />
-              )}
-              Generate Report
-            </Button>
+                <Button
+                  className="w-full h-11 text-base shadow-sm"
+                  size="lg"
+                  onClick={() => handleGenerate(false)}
+                  disabled={!canGenerate || generate.isPending}
+                >
+                  {generate.isPending ? (
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  ) : (
+                    <Sparkles className="mr-2 h-5 w-5" />
+                  )}
+                  {generate.isPending ? "Generating…" : "Generate QA Report"}
+                </Button>
+
+                {!canGenerate && (repoOverride || prNumber) && (
+                  <p className="text-center text-xs text-muted-foreground">
+                    Enter a valid repo and PR number to continue
+                  </p>
+                )}
+
+                {generate.isError && (
+                  <Alert variant="destructive">
+                    <AlertTitle>Generation failed</AlertTitle>
+                    <AlertDescription className="text-sm">
+                      {(generate.error as Error)?.message ||
+                        "Check GITHUB_TOKEN in Supabase secrets and repo access."}
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+
+            {showHistory && (
+              <Card className="shadow-sm">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <History className="h-4 w-4" />
+                    History
+                  </CardTitle>
+                  <CardDescription className="font-mono text-xs">
+                    {debouncedRepo} · PR #{debouncedPr}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {showHistorySkeleton ? (
+                    <div className="space-y-2">
+                      <Skeleton className="h-12 w-full" />
+                      <Skeleton className="h-12 w-full" />
+                    </div>
+                  ) : history.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No previous reports yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {history.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className="group flex w-full flex-col gap-1 rounded-lg border px-3 py-2.5 text-left transition-colors hover:border-primary/30 hover:bg-primary/5"
+                          onClick={() => setReport(item)}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                              <Clock className="h-3 w-3" />
+                              {new Date(item.createdAt).toLocaleString()}
+                            </span>
+                            {item.cached && (
+                              <Badge variant="outline" className="text-[10px]">
+                                cached
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="line-clamp-2 text-sm group-hover:text-foreground">
+                            {item.featureSummary.summary}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </div>
 
-          {generate.isError && (
-            <Alert variant="destructive">
-              <AlertTitle>Generation failed</AlertTitle>
-              <AlertDescription>
-                {(generate.error as Error)?.message ||
-                  "Check GitHub secrets (GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO) and try again."}
-              </AlertDescription>
-            </Alert>
-          )}
-        </CardContent>
-      </Card>
+          {/* Right: Results */}
+          <div className="lg:col-span-8">
+            {isInitialGenerate && (
+              <Card className="overflow-hidden shadow-sm">
+                <CardHeader className="border-b bg-muted/30">
+                  <CardTitle className="flex items-center gap-2">
+                    <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                    Analyzing PR changes
+                  </CardTitle>
+                  <CardDescription>This usually takes 15–30 seconds</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4 pt-6">
+                  {LOADING_STEPS.map((step, i) => (
+                    <div key={step} className="flex items-center gap-3">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                        {i + 1}
+                      </span>
+                      <span className="text-sm">{step}</span>
+                      {i === 0 && <Loader2 className="ml-auto h-4 w-4 animate-spin text-primary" />}
+                    </div>
+                  ))}
+                  <div className="space-y-2 pt-2">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-20 w-full" />
+                    <Skeleton className="h-20 w-full" />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
-      {generate.isPending && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Analyzing PR changes...</CardTitle>
-            <CardDescription>
-              Fetching task context, GitHub diff, and generating QA intelligence.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Skeleton className="h-6 w-2/3" />
-            <Skeleton className="h-24 w-full" />
-            <Skeleton className="h-24 w-full" />
-            <Skeleton className="h-24 w-full" />
-          </CardContent>
-        </Card>
-      )}
+            {!report && !generate.isPending && (
+              <Card className="overflow-hidden border-dashed shadow-sm">
+                <CardContent className="flex flex-col items-center px-6 py-16 text-center">
+                  <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-muted/50 ring-1 ring-border">
+                    <GitPullRequest className="h-10 w-10 text-muted-foreground" />
+                  </div>
+                  <h2 className="text-xl font-semibold">Your QA report will appear here</h2>
+                  <p className="mt-2 max-w-md text-sm text-muted-foreground">
+                    Fill in the repo and PR on the left, then hit Generate. TestPilot will explain
+                    what changed and what to test.
+                  </p>
+                  <div className="mt-8 grid w-full max-w-lg gap-3 sm:grid-cols-3">
+                    {[
+                      { step: "1", label: "Paste repo URL" },
+                      { step: "2", label: "Enter PR #" },
+                      { step: "3", label: "Generate" },
+                    ].map((item) => (
+                      <div
+                        key={item.step}
+                        className="rounded-lg border bg-muted/20 px-3 py-4 text-center"
+                      >
+                        <p className="text-lg font-bold text-primary">{item.step}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{item.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
-      {!generate.isPending && !report && (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-            <FlaskConical className="h-10 w-10 text-muted-foreground" />
-            <p className="font-medium">No report yet</p>
-            <p className="max-w-md text-sm text-muted-foreground">
-              Select a task and PR number, then click Generate Report to create a QA brief for
-              testers.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {report && !generate.isPending && (
-        <div className="space-y-4">
-          <ReportExportActions
-            report={report}
-            onRegenerate={() => handleGenerate(true)}
-            isRegenerating={generate.isPending}
-          />
-          <QAReportViewer report={report} />
-        </div>
-      )}
-
-      {taskId && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Report History</CardTitle>
-            <CardDescription>Previously generated reports for this task</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {historyLoading ? (
-              <Skeleton className="h-10 w-full" />
-            ) : history.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No previous reports for this task.</p>
-            ) : (
-              <div className="space-y-2">
-                {history.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm hover:bg-muted/50"
-                    onClick={() => setReport(item)}
-                  >
-                    <span>
-                      PR #{item.prNumber} — {new Date(item.createdAt).toLocaleString()}
-                    </span>
-                    <span className="text-muted-foreground">
-                      {item.featureSummary.summary.length > 80
-                        ? `${item.featureSummary.summary.slice(0, 80)}…`
-                        : item.featureSummary.summary}
-                    </span>
-                  </button>
-                ))}
+            {report && (
+              <div className="relative">
+                {generate.isPending && (
+                  <div className="absolute inset-0 z-30 flex items-start justify-center rounded-xl bg-background/70 pt-16 backdrop-blur-sm">
+                    <div className="flex items-center gap-2 rounded-lg border bg-background px-5 py-3 shadow-lg">
+                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                      <span className="text-sm font-medium">Regenerating report…</span>
+                    </div>
+                  </div>
+                )}
+                <ReportExportActions
+                  report={report}
+                  onRegenerate={() => handleGenerate(true)}
+                  isRegenerating={generate.isPending}
+                />
+                <QAReportViewer report={report} />
               </div>
             )}
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

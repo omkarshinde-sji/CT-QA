@@ -6,7 +6,7 @@ import type { QaReportWithMeta } from "../types/qa-report.types";
 
 interface QaReportRow {
   id: string;
-  task_id: string;
+  task_id: string | null;
   pr_number: number;
   github_repo: string | null;
   feature_summary: QaReportWithMeta["featureSummary"];
@@ -40,27 +40,33 @@ function mapRow(row: QaReportRow): QaReportWithMeta {
   };
 }
 
-export function useQAReports(taskId?: string) {
+export interface QAReportsFilter {
+  repo?: string;
+  prNumber?: number;
+}
+
+export function useQAReports(filter?: QAReportsFilter) {
   const { user } = useAuth();
+  const repo = filter?.repo;
+  const prNumber = filter?.prNumber;
+  const canFetch = Boolean(user && repo && prNumber && prNumber > 0);
 
   return useQuery({
-    queryKey: queryKeys.testpilot.reports(taskId),
+    queryKey: queryKeys.testpilot.reports(undefined, repo, prNumber),
     queryFn: async (): Promise<QaReportWithMeta[]> => {
-      let query = supabase
+      const { data, error } = await supabase
         .from("qa_reports")
         .select("*")
+        .eq("github_repo", repo!)
+        .eq("pr_number", prNumber!)
         .order("created_at", { ascending: false })
         .limit(20);
 
-      if (taskId) {
-        query = query.eq("task_id", taskId);
-      }
-
-      const { data, error } = await query;
       if (error) throw error;
       return (data as QaReportRow[]).map(mapRow);
     },
-    enabled: !!user,
+    enabled: canFetch,
     staleTime: cacheConfig.staleTime.long,
+    placeholderData: (previous) => previous,
   });
 }

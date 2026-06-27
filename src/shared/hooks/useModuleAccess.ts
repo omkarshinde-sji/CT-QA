@@ -60,7 +60,8 @@ export function useModuleAccess(): ModuleAccessResult {
 
     if (userModules !== null && userModules !== undefined && userModules.length > 0) {
       const entry = userModules.find((m) => m.slug === moduleId);
-      return entry ? entry.is_active : false;
+      if (entry) return entry.is_active;
+      return false;
     }
 
     if (dbModules !== null && dbModules !== undefined) {
@@ -73,6 +74,7 @@ export function useModuleAccess(): ModuleAccessResult {
       meetings: "enableMeetings",
       knowledge: "enableKnowledgeBase",
       "business-dev": "enableClients",
+      testpilot: "enableTestPilot",
     };
 
     const primaryFlag = primaryFlagMap[moduleId];

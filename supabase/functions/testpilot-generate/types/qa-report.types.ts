@@ -11,11 +11,21 @@ export const TestCaseSchema = z.object({
   category: z.string().optional(),
 });
 
+export const ChangeItemSchema = z.object({
+  area: z.string(),
+  files: z.array(z.string()).optional(),
+  before: z.string(),
+  after: z.string(),
+  technicalNote: z.string().optional(),
+  whatToVerify: z.string(),
+});
+
 export const FeatureSummarySchema = z.object({
   summary: z.string(),
   before: z.string().optional(),
   after: z.string().optional(),
   userFlow: z.string().optional(),
+  changes: z.array(ChangeItemSchema).optional(),
 });
 
 export const RequirementItemSchema = z.object({
@@ -54,10 +64,11 @@ export const QaReportSchema = z.object({
 });
 
 export const GenerateRequestSchema = z.object({
-  taskId: z.string().uuid(),
   prNumber: z.number().int().positive(),
   regenerate: z.boolean().optional(),
-  repo: z.string().optional(),
+  repo: z.string().min(1),
+  taskTitle: z.string().optional(),
+  taskDescription: z.string().optional(),
 });
 
 export type TestCase = z.infer<typeof TestCaseSchema>;
@@ -70,7 +81,7 @@ export type QaReport = z.infer<typeof QaReportSchema>;
 export type GenerateRequest = z.infer<typeof GenerateRequestSchema>;
 
 export interface TestPilotContext {
-  taskId: string;
+  taskId: string | null;
   prNumber: number;
   repo: string;
   contextHash: string;
@@ -98,7 +109,7 @@ export interface TestPilotContext {
 
 export interface QaReportRecord {
   id: string;
-  task_id: string;
+  task_id: string | null;
   pr_number: number;
   github_repo: string | null;
   context_hash: string;
@@ -117,10 +128,19 @@ export interface QaReportRecord {
   created_at: string;
 }
 
-export function recordToReport(record: QaReportRecord): QaReport & { id: string; taskId: string; prNumber: number; createdAt: string } {
+export function recordToReport(
+  record: QaReportRecord,
+): QaReport & {
+  id: string;
+  taskId: string | null;
+  prNumber: number;
+  githubRepo?: string | null;
+  createdAt: string;
+} {
   return {
     id: record.id,
     taskId: record.task_id,
+    githubRepo: record.github_repo,
     prNumber: record.pr_number,
     createdAt: record.created_at,
     featureSummary: record.feature_summary,
