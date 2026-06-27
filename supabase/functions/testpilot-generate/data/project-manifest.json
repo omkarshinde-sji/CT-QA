@@ -1,0 +1,35 @@
+{
+  "name": "SJ Control Tower Framework",
+  "description": "Full-stack business management platform with auth, CRM, meetings, knowledge base, AI agents, projects, EOS, and productivity tracking.",
+  "stack": ["React 18", "TypeScript", "Vite", "Supabase", "shadcn/ui", "TanStack Query"],
+  "modules": [
+    { "id": "platform", "name": "Platform Core", "description": "Auth, layouts, navigation, dashboard", "paths": ["src/modules/platform/", "src/components/layout/"] },
+    { "id": "actions", "name": "Actions", "description": "Task management with streams, comments, subtasks", "paths": ["src/modules/actions/", "src/components/tasks/"] },
+    { "id": "business-dev", "name": "Business Development", "description": "CRM, deals, contacts, lead follow-up", "paths": ["src/modules/business-dev/", "src/components/followup/"] },
+    { "id": "meetings", "name": "Meetings", "description": "Meeting lifecycle, Zoom, AI summaries", "paths": ["src/modules/meetings/", "src/components/meetings/"] },
+    { "id": "knowledge", "name": "Knowledge Base", "description": "Knowledge entries, semantic search, embeddings", "paths": ["src/modules/knowledge/", "src/components/knowledge/"] },
+    { "id": "projects", "name": "Projects", "description": "Project lifecycle, milestones, billing", "paths": ["src/modules/projects/", "src/components/projects/"] },
+    { "id": "eos", "name": "EOS", "description": "V/TO, OKRs, issues, scorecards", "paths": ["src/modules/eos/"] },
+    { "id": "productivity", "name": "Productivity", "description": "Team metrics and analytics", "paths": ["src/modules/productivity/"] },
+    { "id": "automation", "name": "Automation", "description": "Workflow automation engine", "paths": ["src/modules/automation/"] },
+    { "id": "admin", "name": "Admin", "description": "Admin panel, feature flags, integrations", "paths": ["src/modules/admin/", "src/pages/admin/"] },
+    { "id": "edge-functions", "name": "Edge Functions", "description": "Deno serverless API layer", "paths": ["supabase/functions/"] },
+    { "id": "database", "name": "Database", "description": "PostgreSQL schema, RLS, migrations", "paths": ["supabase/migrations/"] }
+  ],
+  "dependencies": [
+    "@supabase/supabase-js",
+    "@tanstack/react-query",
+    "react-router-dom",
+    "react-hook-form",
+    "zod",
+    "tailwindcss",
+    "lucide-react"
+  ],
+  "criticalPaths": [
+    "src/contexts/AuthContext.tsx",
+    "src/App.tsx",
+    "src/shared/config/modules.ts",
+    "src/lib/cache.ts",
+    "supabase/auth-middleware.ts"
+  ]
+}
