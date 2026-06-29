@@ -37,32 +37,49 @@ Return ONLY valid JSON matching this exact schema (no markdown, no code fences):
 }
 
 WRITING RULES (critical):
-1. featureSummary.changes is REQUIRED — one entry per logical change area from the PR diff (minimum 1, typically 2-8).
-2. Every "before" and "after" must be concrete and testable — describe visible behavior, not code internals.
+1. featureSummary.changes is REQUIRED — cover EVERY changed file in the PR diff. Each file path from the manifest MUST appear in at least one changes[].files array.
+2. Do NOT stop at 4 or 8 entries. If the PR has 15 files, produce enough change entries so all 15 files are accounted for (group only files that change for the exact same user-visible behavior).
+3. Every "before" and "after" must be concrete and testable — describe visible behavior, not code internals.
    BAD: "Updated the component logic"
    GOOD: "Before: Users had to restart Cursor after adding an MCP server. After: Users toggle the MCP server off and on in Cursor Settings."
-3. Use simple words. Avoid: "utilize", "leverage", "implement". Use: "use", "change", "show", "click", "save".
-4. technicalNote should name real files, functions, or APIs from the diff — this is the technical layer for QA leads.
-5. Test case steps must start with a verb (Open, Click, Enter, Verify) and reference real UI labels or URLs from the diff.
-6. impactedModules must use actual file paths from the PR, not invented module names.
-7. Only test what the linked PR(s) touch — do NOT tell QA to regression-test the entire app unless the diff affects shared code.
-8. If the PR is docs-only or copy-only, say so clearly in before/after.
-9. Group related file changes into one "changes" entry — do not create one entry per file unless each file is unrelated.
-10. When multiple PRs are linked, mention PR numbers in technicalNote when a change is specific to one PR.`;
+4. Use simple words. Avoid: "utilize", "leverage", "implement". Use: "use", "change", "show", "click", "save".
+5. technicalNote should name real files, functions, or APIs from the diff — this is the technical layer for QA leads.
+6. Test case steps must start with a verb (Open, Click, Enter, Verify) and reference real UI labels or URLs from the diff.
+7. impactedModules must use actual file paths from the PR, not invented module names.
+8. Only test what the linked PR(s) touch — do NOT tell QA to regression-test the entire app unless the diff affects shared code.
+9. If the PR is docs-only or copy-only, say so clearly in before/after.
+10. Group related file changes ONLY when they are one indivisible user-visible change — never group unrelated files just to shorten the list.
+11. When multiple PRs are linked, mention PR numbers in technicalNote when a change is specific to one PR.`;
+}
+
+function buildFileManifest(ctx: TestPilotContext): string {
+  const files = ctx.pr.changedFiles;
+  if (!files.length) return "No files changed.";
+
+  return files
+    .map((f, i) => `${i + 1}. [${f.status}] ${f.filename}`)
+    .join("\n");
 }
 
 function buildPrSections(ctx: TestPilotContext): string {
+  const manifest = buildFileManifest(ctx);
+  const fileCount = ctx.pr.changedFiles.length;
+  const manifestBlock = `**CHANGED FILES MANIFEST (${fileCount} files — EVERY file below MUST appear in changes[].files):**
+${manifest}`;
+
   if (ctx.prs.length <= 1) {
     const pr = ctx.prs[0];
-    const filesBlock = pr.changedFiles
+    const filesBlock = ctx.pr.changedFiles
       .map((f) => {
-        const patch = f.patch ? `\n${f.patch}` : "";
+        const patch = f.patch ? `\n${f.patch}` : "\n_(patch omitted — large or binary file)_";
         return `### ${f.status}: ${f.filename}${patch}`;
       })
       .join("\n\n");
     const commitsBlock = pr.commitMessages.map((m) => `- ${m}`).join("\n");
 
-    return `**PR #${pr.prNumber}:** ${pr.title}
+    return `${manifestBlock}
+
+**PR #${pr.prNumber}:** ${pr.title}
 **Head SHA:** ${pr.headSha}
 
 **PR Description:**
@@ -95,12 +112,14 @@ ${commitsBlock}`;
 
   const mergedFilesBlock = ctx.pr.changedFiles
     .map((f) => {
-      const patch = f.patch ? `\n${f.patch}` : "";
+      const patch = f.patch ? `\n${f.patch}` : "\n_(patch omitted — large or binary file)_";
       return `### ${f.status}: ${f.filename}${patch}`;
     })
     .join("\n\n");
 
-  return `**Linked PRs:** ${ctx.prNumbers.map((n) => `#${n}`).join(", ")} (${ctx.prs.length} total)
+  return `${manifestBlock}
+
+**Linked PRs:** ${ctx.prNumbers.map((n) => `#${n}`).join(", ")} (${ctx.prs.length} total)
 
 ${perPr}
 
@@ -165,6 +184,8 @@ ${pathHints}
 ${onboardingBase}
 
 ## Instructions for this report
+
+**Coverage requirement:** This PR changes ${ctx.pr.changedFiles.length} file(s). Your changes[] array must reference ALL ${ctx.pr.changedFiles.length} files from the manifest above. Missing files is a failed report.
 
 Focus on BEFORE vs AFTER for each change area across ALL linked PRs. QA testers need to understand:
 - What worked or looked one way before these PRs

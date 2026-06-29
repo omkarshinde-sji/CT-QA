@@ -87,6 +87,29 @@ async function githubFetch<T>(path: string, token: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function githubFetchPaginated<T>(
+  path: string,
+  token: string,
+  perPage = 100,
+): Promise<T[]> {
+  const items: T[] = [];
+  let page = 1;
+
+  while (page <= 20) {
+    const separator = path.includes("?") ? "&" : "?";
+    const pageItems = await githubFetch<T[]>(
+      `${path}${separator}per_page=${perPage}&page=${page}`,
+      token,
+    );
+    if (!pageItems.length) break;
+    items.push(...pageItems);
+    if (pageItems.length < perPage) break;
+    page++;
+  }
+
+  return items;
+}
+
 function truncatePatch(patch: string | undefined): string | undefined {
   if (!patch) return undefined;
   const encoder = new TextEncoder();
@@ -108,17 +131,18 @@ export async function fetchPullRequestContext(
     head: { sha: string };
   }>(`${repoPath}/pulls/${prNumber}`, token);
 
-  const files = await githubFetch<Array<{
+  const files = await githubFetchPaginated<{
     filename: string;
     status: string;
     patch?: string;
     additions?: number;
     deletions?: number;
-  }>>(`${repoPath}/pulls/${prNumber}/files?per_page=100`, token);
+  }>(`${repoPath}/pulls/${prNumber}/files`, token);
 
-  const commits = await githubFetch<Array<{ commit: { message: string } }>>(
-    `${repoPath}/pulls/${prNumber}/commits?per_page=50`,
+  const commits = await githubFetchPaginated<{ commit: { message: string } }>(
+    `${repoPath}/pulls/${prNumber}/commits`,
     token,
+    100,
   );
 
   const changedFiles = files.map((file) => ({

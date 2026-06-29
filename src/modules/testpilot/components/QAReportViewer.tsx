@@ -8,6 +8,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { QaReportWithMeta } from "../types/qa-report.types";
@@ -151,6 +152,13 @@ function ChangeCard({ change, index }: { change: NonNullable<QaReportWithMeta["f
 export function QAReportViewer({ report }: QAReportViewerProps) {
   const fs = report.featureSummary;
   const hasChanges = Boolean(fs.changes?.length);
+  const changeCount = fs.changes?.length ?? 0;
+  const totalFiles = fs.totalChangedFiles;
+  const filesInChanges = new Set(
+    (fs.changes ?? []).flatMap((c) => c.files ?? []),
+  ).size;
+  const coverageIncomplete =
+    totalFiles != null && totalFiles > 0 && filesInChanges < totalFiles;
   const defaultTab = hasChanges ? "changes" : "tests";
 
   return (
@@ -161,7 +169,7 @@ export function QAReportViewer({ report }: QAReportViewerProps) {
           <span className="hidden sm:inline">Changes</span>
           {hasChanges && (
             <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
-              {fs.changes!.length}
+              {totalFiles != null ? `${changeCount} areas · ${totalFiles} files` : changeCount}
             </Badge>
           )}
         </TabsTrigger>
@@ -181,6 +189,15 @@ export function QAReportViewer({ report }: QAReportViewerProps) {
       </TabsList>
 
       <TabsContent value="changes" className="mt-0 space-y-4">
+        {coverageIncomplete && (
+          <Alert variant="default" className="border-amber-500/40 bg-amber-50/50 dark:bg-amber-950/20">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription className="text-sm">
+              This report covers {filesInChanges} of {totalFiles} changed files. Click{" "}
+              <strong>Regenerate</strong> to fetch a complete report with all file changes.
+            </AlertDescription>
+          </Alert>
+        )}
         <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-primary/5 via-background to-background">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg">Overview</CardTitle>

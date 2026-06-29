@@ -59,6 +59,7 @@ export function ReportExportActions({
 
   const busy = exporting !== null;
   const changeCount = report.featureSummary.changes?.length ?? 0;
+  const totalFiles = report.featureSummary.totalChangedFiles;
   const testCount =
     report.positiveTests.length + report.negativeTests.length + report.edgeCases.length;
 
@@ -79,7 +80,13 @@ export function ReportExportActions({
           </div>
           <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
             {report.githubRepo && <span className="font-mono">{report.githubRepo}</span>}
-            {changeCount > 0 && <span>{changeCount} changes</span>}
+            {changeCount > 0 && (
+              <span>
+                {totalFiles != null
+                  ? `${changeCount} change areas · ${totalFiles} files in PR`
+                  : `${changeCount} changes`}
+              </span>
+            )}
             {testCount > 0 && <span>{testCount} test cases</span>}
           </div>
         </div>
