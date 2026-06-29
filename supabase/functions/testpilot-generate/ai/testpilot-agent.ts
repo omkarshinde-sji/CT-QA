@@ -1,10 +1,14 @@
 import type { TestPilotContext, QaReport } from "../types/qa-report.types.ts";
 import { chatCompletion } from "../lib/chat-completion.ts";
 import { buildPromptMessages } from "./prompt-builder.ts";
+import { getQaRelevantPaths } from "./context-builder.ts";
+import { sanitizeQaReport } from "./report-sanitizer.ts";
+import { enrichReportFromFeedback, getClientFeedbackItems } from "./enrich-report-feedback.ts";
 import {
   buildRetryPrompt,
   parseAndValidateQaReport,
   validateFileCoverage,
+  validateFeedbackCoverage,
 } from "./output-parser.ts";
 
 const MAX_ATTEMPTS = 3;
@@ -25,28 +29,30 @@ export interface AgentRunResult {
   tokensUsed: number;
 }
 
-function attachFileCount(report: QaReport, totalChangedFiles: number): QaReport {
-  return {
-    ...report,
-    featureSummary: {
-      ...report.featureSummary,
-      totalChangedFiles,
-    },
-  };
+function finalizeReport(
+  ctx: TestPilotContext,
+  report: QaReport,
+  allFilePaths: string[],
+): QaReport {
+  const enriched = enrichReportFromFeedback(ctx, report);
+  const feedbackItems = getClientFeedbackItems(ctx);
+  return sanitizeQaReport(enriched, allFilePaths, feedbackItems);
 }
 
 export async function runTestPilotAgent(ctx: TestPilotContext): Promise<AgentRunResult> {
   const allFilePaths = ctx.pr.changedFiles.map((f) => f.filename);
+  const qaRelevantPaths = getQaRelevantPaths(ctx);
   const messages = buildPromptMessages(ctx);
   let lastErrors: string[] = [];
   let totalTokens = 0;
   let modelUsed = "gpt-4o-mini";
+  let bestReport: QaReport | null = null;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const result = await chatCompletion({
       messages,
       temperature: 0.3,
-      max_tokens: 12000,
+      max_tokens: 16000,
     });
 
     totalTokens += (result.input_tokens ?? 0) + (result.output_tokens ?? 0);
@@ -54,10 +60,14 @@ export async function runTestPilotAgent(ctx: TestPilotContext): Promise<AgentRun
 
     const parsed = parseAndValidateQaReport(result.content);
     if (parsed.success && parsed.report) {
-      const coverageErrors = validateFileCoverage(parsed.report, allFilePaths);
+      bestReport = parsed.report;
+      const coverageErrors = [
+        ...validateFileCoverage(parsed.report, qaRelevantPaths),
+        ...validateFeedbackCoverage(ctx, parsed.report),
+      ];
       if (!coverageErrors.length) {
         return {
-          report: attachFileCount(parsed.report, allFilePaths.length),
+          report: finalizeReport(ctx, parsed.report, allFilePaths),
           model: modelUsed,
           tokensUsed: totalTokens,
         };
@@ -73,24 +83,25 @@ export async function runTestPilotAgent(ctx: TestPilotContext): Promise<AgentRun
         );
         continue;
       }
+    } else {
+      lastErrors = parsed.errors ?? ["Unknown validation error"];
+      console.warn(`[testpilot-agent] attempt ${attempt} failed:`, lastErrors);
 
-      // Last attempt: return best effort but still attach file count for UI warning
-      return {
-        report: attachFileCount(parsed.report, allFilePaths.length),
-        model: modelUsed,
-        tokensUsed: totalTokens,
-      };
+      if (attempt < MAX_ATTEMPTS) {
+        messages.push(
+          { role: "assistant", content: result.content },
+          { role: "user", content: buildRetryPrompt(lastErrors) },
+        );
+      }
     }
+  }
 
-    lastErrors = parsed.errors ?? ["Unknown validation error"];
-    console.warn(`[testpilot-agent] attempt ${attempt} failed:`, lastErrors);
-
-    if (attempt < MAX_ATTEMPTS) {
-      messages.push(
-        { role: "assistant", content: result.content },
-        { role: "user", content: buildRetryPrompt(lastErrors) },
-      );
-    }
+  if (bestReport) {
+    return {
+      report: finalizeReport(ctx, bestReport, allFilePaths),
+      model: modelUsed,
+      tokensUsed: totalTokens,
+    };
   }
 
   throw new TestPilotAgentError(

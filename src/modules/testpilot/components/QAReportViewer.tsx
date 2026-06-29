@@ -12,9 +12,13 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { QaReportWithMeta } from "../types/qa-report.types";
+import { prepareReportForDisplay } from "../lib/prepareReportForDisplay";
+import { extractClientFeedbackItems } from "../lib/clientFeedbackParser";
 
 interface QAReportViewerProps {
   report: QaReportWithMeta;
+  taskDescription?: string;
+  taskComments?: Array<{ author: string; body: string; createdAt: string }>;
 }
 
 const priorityVariant: Record<string, "destructive" | "default" | "secondary"> = {
@@ -149,16 +153,22 @@ function ChangeCard({ change, index }: { change: NonNullable<QaReportWithMeta["f
   );
 }
 
-export function QAReportViewer({ report }: QAReportViewerProps) {
-  const fs = report.featureSummary;
+export function QAReportViewer({ report, taskDescription = "", taskComments = [] }: QAReportViewerProps) {
+  const displayReport = prepareReportForDisplay(report, { taskDescription, taskComments });
+  const feedbackCount = extractClientFeedbackItems(taskDescription, taskComments).length;
+  const fs = displayReport.featureSummary;
   const hasChanges = Boolean(fs.changes?.length);
   const changeCount = fs.changes?.length ?? 0;
   const totalFiles = fs.totalChangedFiles;
+  const qaFileCount = fs.qaRelevantFileCount ?? new Set(
+    (fs.changes ?? []).flatMap((c) => c.files ?? []),
+  ).size;
+  const excludedCount = fs.excludedFiles?.length ?? 0;
   const filesInChanges = new Set(
     (fs.changes ?? []).flatMap((c) => c.files ?? []),
   ).size;
   const coverageIncomplete =
-    totalFiles != null && totalFiles > 0 && filesInChanges < totalFiles;
+    qaFileCount > 0 && filesInChanges < qaFileCount;
   const defaultTab = hasChanges ? "changes" : "tests";
 
   return (
@@ -169,7 +179,9 @@ export function QAReportViewer({ report }: QAReportViewerProps) {
           <span className="hidden sm:inline">Changes</span>
           {hasChanges && (
             <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
-              {totalFiles != null ? `${changeCount} areas · ${totalFiles} files` : changeCount}
+              {changeCount} areas · {qaFileCount} QA files
+              {feedbackCount > 0 ? ` · ${feedbackCount} AC items` : ""}
+              {totalFiles != null && totalFiles > qaFileCount ? ` (${totalFiles} in PR)` : ""}
             </Badge>
           )}
         </TabsTrigger>
@@ -177,9 +189,9 @@ export function QAReportViewer({ report }: QAReportViewerProps) {
           <CheckCircle2 className="h-4 w-4 shrink-0" />
           <span className="hidden sm:inline">Tests</span>
           <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
-            {report.positiveTests.length +
-              report.negativeTests.length +
-              report.edgeCases.length}
+            {displayReport.positiveTests.length +
+              displayReport.negativeTests.length +
+              displayReport.edgeCases.length}
           </Badge>
         </TabsTrigger>
         <TabsTrigger value="analysis" className="gap-1.5 py-2 text-xs sm:text-sm">
@@ -193,8 +205,18 @@ export function QAReportViewer({ report }: QAReportViewerProps) {
           <Alert variant="default" className="border-amber-500/40 bg-amber-50/50 dark:bg-amber-950/20">
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription className="text-sm">
-              This report covers {filesInChanges} of {totalFiles} changed files. Click{" "}
-              <strong>Regenerate</strong> to fetch a complete report with all file changes.
+              This report covers {filesInChanges} of {qaFileCount} QA-relevant files. Click{" "}
+              <strong>Regenerate</strong> for a complete report.
+            </AlertDescription>
+          </Alert>
+        )}
+        {excludedCount > 0 && (
+          <Alert className="border-muted bg-muted/30">
+            <FileCode2 className="h-4 w-4" />
+            <AlertDescription className="text-sm text-muted-foreground">
+              {excludedCount} non-QA file{excludedCount > 1 ? "s" : ""} omitted from changes (e.g.{" "}
+              {fs.excludedFiles!.slice(0, 3).map((f) => f.split("/").pop()).join(", ")}
+              {excludedCount > 3 ? "…" : ""}) — dependency and config updates only.
             </AlertDescription>
           </Alert>
         )}
@@ -247,36 +269,36 @@ export function QAReportViewer({ report }: QAReportViewerProps) {
           <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
             <span className="h-2 w-2 rounded-full bg-green-500" />
             Positive tests
-            <Badge variant="outline">{report.positiveTests.length}</Badge>
+            <Badge variant="outline">{displayReport.positiveTests.length}</Badge>
           </h3>
-          <TestCaseList items={report.positiveTests} accent="green" />
+          <TestCaseList items={displayReport.positiveTests} accent="green" />
         </section>
         <section>
           <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
             <span className="h-2 w-2 rounded-full bg-red-500" />
             Negative tests
-            <Badge variant="outline">{report.negativeTests.length}</Badge>
+            <Badge variant="outline">{displayReport.negativeTests.length}</Badge>
           </h3>
-          <TestCaseList items={report.negativeTests} accent="red" />
+          <TestCaseList items={displayReport.negativeTests} accent="red" />
         </section>
         <section>
           <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
             <span className="h-2 w-2 rounded-full bg-amber-500" />
             Edge cases
-            <Badge variant="outline">{report.edgeCases.length}</Badge>
+            <Badge variant="outline">{displayReport.edgeCases.length}</Badge>
           </h3>
-          <TestCaseList items={report.edgeCases} accent="amber" />
+          <TestCaseList items={displayReport.edgeCases} accent="amber" />
         </section>
       </TabsContent>
 
       <TabsContent value="analysis" className="mt-0 space-y-4">
-        {report.requirementBreakdown.length > 0 && (
+        {displayReport.requirementBreakdown.length > 0 && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Requirements</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {report.requirementBreakdown.map((req, i) => (
+              {displayReport.requirementBreakdown.map((req, i) => (
                 <div key={i} className="rounded-lg border p-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline">{req.type}</Badge>
@@ -298,13 +320,13 @@ export function QAReportViewer({ report }: QAReportViewerProps) {
           </Card>
         )}
 
-        {report.impactedModules.length > 0 && (
+        {displayReport.impactedModules.length > 0 && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Impacted modules</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              {report.impactedModules.map((mod, i) => (
+              {displayReport.impactedModules.map((mod, i) => (
                 <div
                   key={i}
                   className="flex items-start justify-between gap-3 rounded-lg border p-3"
@@ -322,7 +344,7 @@ export function QAReportViewer({ report }: QAReportViewerProps) {
           </Card>
         )}
 
-        {report.riskAssessment.length > 0 && (
+        {displayReport.riskAssessment.length > 0 && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
@@ -331,7 +353,7 @@ export function QAReportViewer({ report }: QAReportViewerProps) {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              {report.riskAssessment.map((risk, i) => (
+              {displayReport.riskAssessment.map((risk, i) => (
                 <div key={i} className="rounded-lg border p-3">
                   <div className="flex items-start justify-between gap-3">
                     <p className="text-sm">{risk.risk}</p>
@@ -350,13 +372,13 @@ export function QAReportViewer({ report }: QAReportViewerProps) {
           </Card>
         )}
 
-        {report.regressionChecklist.length > 0 && (
+        {displayReport.regressionChecklist.length > 0 && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Regression checklist</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {report.regressionChecklist.map((group, i) => (
+              {displayReport.regressionChecklist.map((group, i) => (
                 <div key={i}>
                   <p className="mb-2 font-medium">{group.category}</p>
                   <ul className="space-y-1.5">
@@ -373,14 +395,14 @@ export function QAReportViewer({ report }: QAReportViewerProps) {
           </Card>
         )}
 
-        {report.onboardingSummary && (
+        {displayReport.onboardingSummary && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Onboarding summary</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="whitespace-pre-wrap text-sm text-muted-foreground">
-                {report.onboardingSummary}
+                {displayReport.onboardingSummary}
               </p>
             </CardContent>
           </Card>

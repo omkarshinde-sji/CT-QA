@@ -27,6 +27,8 @@ export const FeatureSummarySchema = z.object({
   userFlow: z.string().optional(),
   changes: z.array(ChangeItemSchema).optional(),
   totalChangedFiles: z.number().int().nonnegative().optional(),
+  qaRelevantFileCount: z.number().int().nonnegative().optional(),
+  excludedFiles: z.array(z.string()).optional(),
 });
 
 export const RequirementItemSchema = z.object({
@@ -106,4 +108,29 @@ export interface GenerateTestPilotResponse {
   success: boolean;
   report: QaReportWithMeta;
   cached: boolean;
+}
+
+export interface TestPilotChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface TestPilotChatRequest {
+  message: string;
+  history?: TestPilotChatMessage[];
+  repo: string;
+  prNumbers: number[];
+  report?: QaReport;
+  taskTitle?: string;
+  taskDescription?: string;
+  taskComments?: TaskCommentInput[];
+  activeCollabProjectId?: number;
+  activeCollabTaskId?: number;
+}
+
+export interface TestPilotChatResponse {
+  success: boolean;
+  reply: string;
+  tokensUsed?: number;
+  model?: string;
 }

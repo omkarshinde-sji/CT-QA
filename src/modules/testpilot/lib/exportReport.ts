@@ -1,5 +1,13 @@
 import type { QaReportWithMeta } from "../types/qa-report.types";
 import { formatPrNumbersLabel } from "./parsePrNumbers";
+import { prepareReportForDisplay, type PrepareReportOptions } from "./prepareReportForDisplay";
+
+function prepareExportReport(
+  report: QaReportWithMeta,
+  options?: PrepareReportOptions,
+): QaReportWithMeta {
+  return { ...report, ...prepareReportForDisplay(report, options) };
+}
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -17,8 +25,12 @@ function downloadText(content: string, filename: string, mimeType: string) {
   downloadBlob(new Blob([content], { type: mimeType }), filename);
 }
 
-export function exportReportJson(report: QaReportWithMeta, filename = "qa-report") {
-  downloadText(JSON.stringify(report, null, 2), `${filename}.json`, "application/json");
+export function exportReportJson(
+  report: QaReportWithMeta,
+  filename = "qa-report",
+  prepare?: PrepareReportOptions,
+) {
+  downloadText(JSON.stringify(prepareExportReport(report, prepare), null, 2), `${filename}.json`, "application/json");
 }
 
 function formatTestCases(title: string, cases: QaReportWithMeta["positiveTests"]) {
@@ -33,16 +45,17 @@ function formatTestCases(title: string, cases: QaReportWithMeta["positiveTests"]
   ].join("\n\n");
 }
 
-export function reportToMarkdown(report: QaReportWithMeta): string {
-  const fs = report.featureSummary;
-  const prLabel = formatPrNumbersLabel(report.prNumbers?.length ? report.prNumbers : [report.prNumber]);
+export function reportToMarkdown(report: QaReportWithMeta, prepare?: PrepareReportOptions): string {
+  const r = prepareExportReport(report, prepare);
+  const fs = r.featureSummary;
+  const prLabel = formatPrNumbersLabel(r.prNumbers?.length ? r.prNumbers : [r.prNumber]);
   const featureParts = [
     `# QA Report — PR ${prLabel}`,
     "",
-    report.githubRepo ? `**Repository:** ${report.githubRepo}` : "",
-    report.taskId ? `**Task ID:** ${report.taskId}` : "",
-    `**Generated:** ${report.createdAt}`,
-    report.cached ? "**Source:** Cached report" : "**Source:** Freshly generated",
+    r.githubRepo ? `**Repository:** ${r.githubRepo}` : "",
+    r.taskId ? `**Task ID:** ${r.taskId}` : "",
+    `**Generated:** ${r.createdAt}`,
+    r.cached ? "**Source:** Cached report" : "**Source:** Freshly generated",
     "",
     "## Feature Summary",
     fs.summary,
@@ -72,43 +85,43 @@ export function reportToMarkdown(report: QaReportWithMeta): string {
       ].join("\n")
     : "";
 
-  const requirements = report.requirementBreakdown.length
+  const requirements = r.requirementBreakdown.length
     ? [
         "## Requirements",
-        ...report.requirementBreakdown.map(
-          (r) =>
-            `- **${r.type}:** ${r.description}${
-              r.acceptanceCriteria?.length
-                ? `\n  - Acceptance: ${r.acceptanceCriteria.join("; ")}`
+        ...r.requirementBreakdown.map(
+          (req) =>
+            `- **${req.type}:** ${req.description}${
+              req.acceptanceCriteria?.length
+                ? `\n  - Acceptance: ${req.acceptanceCriteria.join("; ")}`
                 : ""
             }`,
         ),
       ].join("\n")
     : "## Requirements\n\n_No items_";
 
-  const modules = report.impactedModules.length
+  const modules = r.impactedModules.length
     ? [
         "## Impacted Modules",
-        ...report.impactedModules.map(
+        ...r.impactedModules.map(
           (m) => `- **${m.moduleName}** (${m.testingPriority}): ${m.reason}`,
         ),
       ].join("\n")
     : "## Impacted Modules\n\n_No items_";
 
-  const risks = report.riskAssessment.length
+  const risks = r.riskAssessment.length
     ? [
         "## Risk Assessment",
-        ...report.riskAssessment.map(
-          (r) =>
-            `- **${r.severity}:** ${r.risk}${r.mitigation ? ` — Mitigation: ${r.mitigation}` : ""}`,
+        ...r.riskAssessment.map(
+          (risk) =>
+            `- **${risk.severity}:** ${risk.risk}${risk.mitigation ? ` — Mitigation: ${risk.mitigation}` : ""}`,
         ),
       ].join("\n")
     : "## Risk Assessment\n\n_No items_";
 
-  const regression = report.regressionChecklist.length
+  const regression = r.regressionChecklist.length
     ? [
         "## Regression Checklist",
-        ...report.regressionChecklist.map(
+        ...r.regressionChecklist.map(
           (g) => `### ${g.category}\n${g.items.map((i) => `- ${i}`).join("\n")}`,
         ),
       ].join("\n\n")
@@ -121,11 +134,11 @@ export function reportToMarkdown(report: QaReportWithMeta): string {
     "",
     requirements,
     "",
-    formatTestCases("Positive Test Cases", report.positiveTests),
+    formatTestCases("Positive Test Cases", r.positiveTests),
     "",
-    formatTestCases("Negative Test Cases", report.negativeTests),
+    formatTestCases("Negative Test Cases", r.negativeTests),
     "",
-    formatTestCases("Edge Cases", report.edgeCases),
+    formatTestCases("Edge Cases", r.edgeCases),
     "",
     modules,
     "",
@@ -133,22 +146,34 @@ export function reportToMarkdown(report: QaReportWithMeta): string {
     "",
     regression,
     "",
-    report.onboardingSummary ? `## Onboarding Summary\n\n${report.onboardingSummary}` : "",
+    r.onboardingSummary ? `## Onboarding Summary\n\n${r.onboardingSummary}` : "",
   ]
     .filter(Boolean)
     .join("\n");
 }
 
-export function exportReportMarkdown(report: QaReportWithMeta, filename = "qa-report") {
-  downloadText(reportToMarkdown(report), `${filename}.md`, "text/markdown");
+export function exportReportMarkdown(
+  report: QaReportWithMeta,
+  filename = "qa-report",
+  prepare?: PrepareReportOptions,
+) {
+  downloadText(reportToMarkdown(report, prepare), `${filename}.md`, "text/markdown");
 }
 
-export async function copyReportToClipboard(report: QaReportWithMeta) {
-  await navigator.clipboard.writeText(reportToMarkdown(report));
+export async function copyReportToClipboard(
+  report: QaReportWithMeta,
+  prepare?: PrepareReportOptions,
+) {
+  await navigator.clipboard.writeText(reportToMarkdown(report, prepare));
 }
 
-export async function exportReportPdf(report: QaReportWithMeta, filename = "qa-report") {
-  const prLabel = formatPrNumbersLabel(report.prNumbers?.length ? report.prNumbers : [report.prNumber]);
+export async function exportReportPdf(
+  report: QaReportWithMeta,
+  filename = "qa-report",
+  prepare?: PrepareReportOptions,
+) {
+  const rep = prepareExportReport(report, prepare);
+  const prLabel = formatPrNumbersLabel(rep.prNumbers?.length ? rep.prNumbers : [rep.prNumber]);
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const margin = 14;
@@ -190,11 +215,11 @@ export async function exportReportPdf(report: QaReportWithMeta, filename = "qa-r
   };
 
   addHeading(`QA Report — PR ${prLabel}`, 16);
-  if (report.githubRepo) addParagraph(`Repository: ${report.githubRepo}`);
-  addParagraph(`Generated: ${new Date(report.createdAt).toLocaleString()}`);
-  addParagraph(report.cached ? "Source: Cached report" : "Source: Freshly generated");
+  if (rep.githubRepo) addParagraph(`Repository: ${rep.githubRepo}`);
+  addParagraph(`Generated: ${new Date(rep.createdAt).toLocaleString()}`);
+  addParagraph(rep.cached ? "Source: Cached report" : "Source: Freshly generated");
 
-  const fs = report.featureSummary;
+  const fs = rep.featureSummary;
   addHeading("Overview", 13);
   addParagraph(fs.summary);
   if (fs.userFlow) {
@@ -228,11 +253,11 @@ export async function exportReportPdf(report: QaReportWithMeta, filename = "qa-r
     }
   }
 
-  if (report.requirementBreakdown.length) {
+  if (rep.requirementBreakdown.length) {
     addHeading("Requirements", 13);
-    report.requirementBreakdown.forEach((r) => {
-      addParagraph(`${r.type}: ${r.description}`, 0);
-      r.acceptanceCriteria?.forEach((c) => addParagraph(`• ${c}`, 4));
+    rep.requirementBreakdown.forEach((req) => {
+      addParagraph(`${req.type}: ${req.description}`, 0);
+      req.acceptanceCriteria?.forEach((c) => addParagraph(`• ${c}`, 4));
     });
   }
 
@@ -249,43 +274,48 @@ export async function exportReportPdf(report: QaReportWithMeta, filename = "qa-r
     });
   };
 
-  addTestSection("Positive Test Cases", report.positiveTests);
-  addTestSection("Negative Test Cases", report.negativeTests);
-  addTestSection("Edge Cases", report.edgeCases);
+  addTestSection("Positive Test Cases", rep.positiveTests);
+  addTestSection("Negative Test Cases", rep.negativeTests);
+  addTestSection("Edge Cases", rep.edgeCases);
 
-  if (report.impactedModules.length) {
+  if (rep.impactedModules.length) {
     addHeading("Impacted Modules", 13);
-    report.impactedModules.forEach((m) => {
+    rep.impactedModules.forEach((m) => {
       addParagraph(`${m.moduleName} (${m.testingPriority}): ${m.reason}`);
     });
   }
 
-  if (report.riskAssessment.length) {
+  if (rep.riskAssessment.length) {
     addHeading("Risk Assessment", 13);
-    report.riskAssessment.forEach((r) => {
-      addParagraph(`${r.severity}: ${r.risk}`);
-      if (r.mitigation) addParagraph(`Mitigation: ${r.mitigation}`, 4);
+    rep.riskAssessment.forEach((risk) => {
+      addParagraph(`${risk.severity}: ${risk.risk}`);
+      if (risk.mitigation) addParagraph(`Mitigation: ${risk.mitigation}`, 4);
     });
   }
 
-  if (report.regressionChecklist.length) {
+  if (rep.regressionChecklist.length) {
     addHeading("Regression Checklist", 13);
-    report.regressionChecklist.forEach((g) => {
+    rep.regressionChecklist.forEach((g) => {
       addParagraph(g.category);
       g.items.forEach((item) => addParagraph(`• ${item}`, 4));
     });
   }
 
-  if (report.onboardingSummary) {
+  if (rep.onboardingSummary) {
     addHeading("Onboarding Summary", 13);
-    addParagraph(report.onboardingSummary);
+    addParagraph(rep.onboardingSummary);
   }
 
   doc.save(`${filename}.pdf`);
 }
 
-export async function exportReportDocx(report: QaReportWithMeta, filename = "qa-report") {
-  const prLabel = formatPrNumbersLabel(report.prNumbers?.length ? report.prNumbers : [report.prNumber]);
+export async function exportReportDocx(
+  report: QaReportWithMeta,
+  filename = "qa-report",
+  prepare?: PrepareReportOptions,
+) {
+  const rep = prepareExportReport(report, prepare);
+  const prLabel = formatPrNumbersLabel(rep.prNumbers?.length ? rep.prNumbers : [rep.prNumber]);
   const {
     Document,
     Packer,
@@ -314,15 +344,15 @@ export async function exportReportDocx(report: QaReportWithMeta, filename = "qa-
     heading(`QA Report — PR ${prLabel}`, HeadingLevel.TITLE),
   ];
 
-  if (report.githubRepo) children.push(body(`Repository: ${report.githubRepo}`));
+  if (rep.githubRepo) children.push(body(`Repository: ${rep.githubRepo}`));
   children.push(
-    body(`Generated: ${new Date(report.createdAt).toLocaleString()}`),
-    body(report.cached ? "Source: Cached report" : "Source: Freshly generated"),
+    body(`Generated: ${new Date(rep.createdAt).toLocaleString()}`),
+    body(rep.cached ? "Source: Cached report" : "Source: Freshly generated"),
     heading("Overview", HeadingLevel.HEADING_1),
-    body(report.featureSummary.summary),
+    body(rep.featureSummary.summary),
   );
 
-  const fs = report.featureSummary;
+  const fs = rep.featureSummary;
   if (fs.userFlow) {
     children.push(body("User Flow:", true), body(fs.userFlow));
   }
@@ -342,11 +372,11 @@ export async function exportReportDocx(report: QaReportWithMeta, filename = "qa-
     if (fs.after) children.push(body("After:", true), body(fs.after));
   }
 
-  if (report.requirementBreakdown.length) {
+  if (rep.requirementBreakdown.length) {
     children.push(heading("Requirements", HeadingLevel.HEADING_1));
-    report.requirementBreakdown.forEach((r) => {
-      children.push(body(`${r.type}: ${r.description}`, true));
-      r.acceptanceCriteria?.forEach((c) => children.push(bullet(c, 0)));
+    rep.requirementBreakdown.forEach((req) => {
+      children.push(body(`${req.type}: ${req.description}`, true));
+      req.acceptanceCriteria?.forEach((c) => children.push(bullet(c, 0)));
     });
   }
 
@@ -363,37 +393,37 @@ export async function exportReportDocx(report: QaReportWithMeta, filename = "qa-
     });
   };
 
-  addTestSection("Positive Test Cases", report.positiveTests);
-  addTestSection("Negative Test Cases", report.negativeTests);
-  addTestSection("Edge Cases", report.edgeCases);
+  addTestSection("Positive Test Cases", rep.positiveTests);
+  addTestSection("Negative Test Cases", rep.negativeTests);
+  addTestSection("Edge Cases", rep.edgeCases);
 
-  if (report.impactedModules.length) {
+  if (rep.impactedModules.length) {
     children.push(heading("Impacted Modules", HeadingLevel.HEADING_1));
-    report.impactedModules.forEach((m) => {
+    rep.impactedModules.forEach((m) => {
       children.push(body(`${m.moduleName} (${m.testingPriority}): ${m.reason}`));
     });
   }
 
-  if (report.riskAssessment.length) {
+  if (rep.riskAssessment.length) {
     children.push(heading("Risk Assessment", HeadingLevel.HEADING_1));
-    report.riskAssessment.forEach((r) => {
-      children.push(body(`${r.severity}: ${r.risk}`, true));
-      if (r.mitigation) children.push(body(`Mitigation: ${r.mitigation}`));
+    rep.riskAssessment.forEach((risk) => {
+      children.push(body(`${risk.severity}: ${risk.risk}`, true));
+      if (risk.mitigation) children.push(body(`Mitigation: ${risk.mitigation}`));
     });
   }
 
-  if (report.regressionChecklist.length) {
+  if (rep.regressionChecklist.length) {
     children.push(heading("Regression Checklist", HeadingLevel.HEADING_1));
-    report.regressionChecklist.forEach((g) => {
+    rep.regressionChecklist.forEach((g) => {
       children.push(body(g.category, true));
       g.items.forEach((item) => children.push(bullet(item, 0)));
     });
   }
 
-  if (report.onboardingSummary) {
+  if (rep.onboardingSummary) {
     children.push(
       heading("Onboarding Summary", HeadingLevel.HEADING_1),
-      body(report.onboardingSummary),
+      body(rep.onboardingSummary),
     );
   }
 

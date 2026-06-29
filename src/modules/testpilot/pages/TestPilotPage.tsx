@@ -16,6 +16,7 @@ import { useDebouncedValue } from "@/lib/componentOptimization";
 import { TaskPrPicker } from "../components/TaskPrPicker";
 import { QAReportViewer } from "../components/QAReportViewer";
 import { ReportExportActions } from "../components/ReportExportActions";
+import { TestPilotChatLauncher } from "../components/TestPilotChatPanel";
 import { useGenerateTestPilotReport } from "../hooks/useTestPilot";
 import { useQAReports } from "../hooks/useQAReports";
 import { useTestPilotFormState } from "../hooks/useTestPilotFormState";
@@ -138,6 +139,7 @@ export default function TestPilotPage() {
                   repoOverride={repoOverride}
                   acProjectId={acProjectId}
                   acTaskId={acTaskId}
+                  acTaskComments={acTaskComments}
                   onTaskTitleChange={setTaskTitle}
                   onTaskDescriptionChange={setTaskDescription}
                   onAddPrNumber={addPrNumber}
@@ -306,13 +308,32 @@ export default function TestPilotPage() {
                   report={report}
                   onRegenerate={() => handleGenerate(true)}
                   isRegenerating={generate.isPending}
+                  taskDescription={taskDescription}
+                  taskComments={acTaskComments}
                 />
-                <QAReportViewer report={report} />
+                <QAReportViewer
+                  report={report}
+                  taskDescription={taskDescription}
+                  taskComments={acTaskComments}
+                />
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {canGenerate && (
+        <TestPilotChatLauncher
+          repo={normalizedRepo}
+          prNumbers={prNumbers}
+          report={report}
+          taskTitle={taskTitle}
+          taskDescription={taskDescription}
+          taskComments={acTaskComments}
+          activeCollabProjectId={acProjectId ? Number(acProjectId) : undefined}
+          activeCollabTaskId={acTaskId ? Number(acTaskId) : undefined}
+        />
+      )}
     </div>
   );
 }

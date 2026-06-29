@@ -20,8 +20,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { QaReportWithMeta } from "../types/qa-report.types";
+import type { QaReportWithMeta, TaskCommentInput } from "../types/qa-report.types";
 import { formatPrNumbersLabel } from "../lib/parsePrNumbers";
+import { prepareReportForDisplay } from "../lib/prepareReportForDisplay";
+import type { PrepareReportOptions } from "../lib/prepareReportForDisplay";
 import {
   copyReportToClipboard,
   exportReportDocx,
@@ -34,16 +36,21 @@ interface ReportExportActionsProps {
   report: QaReportWithMeta;
   onRegenerate: () => void;
   isRegenerating?: boolean;
+  taskDescription?: string;
+  taskComments?: TaskCommentInput[];
 }
 
 export function ReportExportActions({
   report,
   onRegenerate,
   isRegenerating,
+  taskDescription = "",
+  taskComments = [],
 }: ReportExportActionsProps) {
   const [exporting, setExporting] = useState<string | null>(null);
   const prLabel = formatPrNumbersLabel(report.prNumbers?.length ? report.prNumbers : [report.prNumber]);
   const filename = `qa-report-${report.prNumbers?.length ? report.prNumbers.join("-") : report.prNumber}`;
+  const prepareOptions: PrepareReportOptions = { taskDescription, taskComments };
 
   const runExport = async (key: string, fn: () => void | Promise<void>, successMsg: string) => {
     setExporting(key);
@@ -57,11 +64,15 @@ export function ReportExportActions({
     }
   };
 
+  const displayReport = prepareReportForDisplay(report, prepareOptions);
   const busy = exporting !== null;
-  const changeCount = report.featureSummary.changes?.length ?? 0;
-  const totalFiles = report.featureSummary.totalChangedFiles;
+  const changeCount = displayReport.featureSummary.changes?.length ?? 0;
+  const qaFileCount = displayReport.featureSummary.qaRelevantFileCount;
+  const totalFiles = displayReport.featureSummary.totalChangedFiles;
   const testCount =
-    report.positiveTests.length + report.negativeTests.length + report.edgeCases.length;
+    displayReport.positiveTests.length +
+    displayReport.negativeTests.length +
+    displayReport.edgeCases.length;
 
   return (
     <div className="sticky top-0 z-20 -mx-1 mb-4 rounded-xl border bg-background/95 px-4 py-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/80">
@@ -82,8 +93,8 @@ export function ReportExportActions({
             {report.githubRepo && <span className="font-mono">{report.githubRepo}</span>}
             {changeCount > 0 && (
               <span>
-                {totalFiles != null
-                  ? `${changeCount} change areas · ${totalFiles} files in PR`
+                {qaFileCount != null
+                  ? `${changeCount} areas · ${qaFileCount} QA files${totalFiles != null && totalFiles > qaFileCount ? ` (${totalFiles} in PR)` : ""}`
                   : `${changeCount} changes`}
               </span>
             )}
@@ -98,7 +109,7 @@ export function ReportExportActions({
             disabled={busy || isRegenerating}
             onClick={async () => {
               try {
-                await copyReportToClipboard(report);
+                await copyReportToClipboard(report, prepareOptions);
                 toast.success("Report copied to clipboard");
               } catch {
                 toast.error("Failed to copy report");
@@ -127,7 +138,7 @@ export function ReportExportActions({
               <DropdownMenuItem
                 disabled={busy}
                 onClick={() =>
-                  runExport("pdf", () => exportReportPdf(report, filename), "PDF downloaded")
+                  runExport("pdf", () => exportReportPdf(report, filename, prepareOptions), "PDF downloaded")
                 }
               >
                 <FileText className="mr-2 h-4 w-4" />
@@ -138,7 +149,7 @@ export function ReportExportActions({
                 onClick={() =>
                   runExport(
                     "docx",
-                    () => exportReportDocx(report, filename),
+                    () => exportReportDocx(report, filename, prepareOptions),
                     "Word document downloaded",
                   )
                 }
@@ -149,7 +160,7 @@ export function ReportExportActions({
               <DropdownMenuItem
                 disabled={busy}
                 onClick={() => {
-                  exportReportMarkdown(report, filename);
+                  exportReportMarkdown(report, filename, prepareOptions);
                   toast.success("Markdown downloaded");
                 }}
               >
@@ -159,7 +170,7 @@ export function ReportExportActions({
               <DropdownMenuItem
                 disabled={busy}
                 onClick={() => {
-                  exportReportJson(report, filename);
+                  exportReportJson(report, filename, prepareOptions);
                   toast.success("JSON downloaded");
                 }}
               >
