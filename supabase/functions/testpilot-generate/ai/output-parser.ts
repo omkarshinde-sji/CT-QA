@@ -1,4 +1,5 @@
-import { QaReportSchema, type QaReport } from "../types/qa-report.types.ts";
+import { QaReportSchema, type QaReport, type TestPilotContext } from "../types/qa-report.types.ts";
+import { extractClientFeedbackItems, findUncoveredFeedbackItems } from "./client-feedback-parser.ts";
 
 export interface ParseResult {
   success: boolean;
@@ -65,12 +66,12 @@ export function buildRetryPrompt(errors: string[]): string {
   return `Your previous response was invalid. Fix these validation errors and return ONLY valid JSON:\n${errors.join("\n")}`;
 }
 
-/** Returns error messages when changed files are missing from changes[].files */
+/** Returns error messages when QA-relevant files are missing from changes[].files */
 export function validateFileCoverage(
   report: QaReport,
-  allFilePaths: string[],
+  qaRelevantPaths: string[],
 ): string[] {
-  if (!allFilePaths.length) return [];
+  if (!qaRelevantPaths.length) return [];
 
   const covered = new Set<string>();
   for (const change of report.featureSummary.changes ?? []) {
@@ -79,12 +80,30 @@ export function validateFileCoverage(
     }
   }
 
-  const missing = allFilePaths.filter((path) => !covered.has(path));
+  const missing = qaRelevantPaths.filter((path) => !covered.has(path));
   if (!missing.length) return [];
 
   return [
-    `File coverage incomplete: ${missing.length} of ${allFilePaths.length} changed files are missing from changes[].files.`,
-    `Missing files: ${missing.slice(0, 25).join(", ")}${missing.length > 25 ? ` …and ${missing.length - 25} more` : ""}`,
-    "Add or expand changes[] entries until EVERY manifest file is listed in at least one changes[].files array.",
+    `QA file coverage incomplete: ${missing.length} of ${qaRelevantPaths.length} QA-relevant files missing from changes[].files.`,
+    `Missing: ${missing.slice(0, 25).join(", ")}${missing.length > 25 ? ` …and ${missing.length - 25} more` : ""}`,
+    "Add change areas for each missing file. Do NOT add package.json, lockfiles, or config-only files.",
+  ];
+}
+
+/** Returns errors when ActiveCollab client feedback items are not reflected in the report. */
+export function validateFeedbackCoverage(
+  ctx: TestPilotContext,
+  report: QaReport,
+): string[] {
+  const items = extractClientFeedbackItems(ctx.task.description, ctx.task.comments);
+  if (!items.length) return [];
+
+  const missing = findUncoveredFeedbackItems(items, report);
+  if (!missing.length) return [];
+
+  return [
+    `Client feedback coverage incomplete: ${missing.length} of ${items.length} ActiveCollab items not covered.`,
+    `Missing: ${missing.slice(0, 10).join(" | ")}${missing.length > 10 ? ` …and ${missing.length - 10} more` : ""}`,
+    `Each item needs BOTH a changes[] entry (area + whatToVerify) AND a positiveTests entry. Include all Analysis sub-items: Retained Delta % Notional, Retained Delta % Shares, Volatility Spread (replaced Bond Gamma), Vega formatted to 4 decimal places.`,
   ];
 }

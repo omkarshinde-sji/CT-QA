@@ -8,7 +8,6 @@ import {
   ListChecks,
   CheckCircle2,
   Loader2,
-  MessageSquare,
   Plus,
   X,
 } from "lucide-react";
@@ -39,6 +38,7 @@ import {
   useActiveCollabTaskDetails,
 } from "../hooks/useActiveCollabTasks";
 import type { ActiveCollabTaskComment } from "../types/activecollab.types";
+import { ActiveCollabCommentsList } from "./ActiveCollabCommentsList";
 
 interface TaskPrPickerProps {
   taskTitle: string;
@@ -47,6 +47,7 @@ interface TaskPrPickerProps {
   repoOverride: string;
   acProjectId: string;
   acTaskId: string;
+  acTaskComments: ActiveCollabTaskComment[];
   onTaskTitleChange: (value: string) => void;
   onTaskDescriptionChange: (value: string) => void;
   onAddPrNumber: (pr: number) => void;
@@ -69,6 +70,7 @@ export function TaskPrPicker({
   repoOverride,
   acProjectId,
   acTaskId,
+  acTaskComments,
   onTaskTitleChange,
   onTaskDescriptionChange,
   onAddPrNumber,
@@ -146,6 +148,9 @@ export function TaskPrPicker({
     tasksErrorMessage?.includes("ACTIVECOLLAB_PROXY_AUTH") ||
       tasksErrorMessage?.includes("not configured"),
   );
+
+  const displayedComments =
+    acTaskDetails?.comments?.length ? acTaskDetails.comments : acTaskComments;
 
   const commitPrDraft = () => {
     const parsed = parsePrNumbersInput(prDraft);
@@ -450,20 +455,16 @@ export function TaskPrPicker({
                   ) : detailsError ? (
                     <p className="text-destructive">Could not load task details.</p>
                   ) : acTaskDetails ? (
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                       <p className="font-medium leading-snug">{acTaskDetails.task.name}</p>
                       {acTaskDetails.task.description && (
-                        <p className="line-clamp-3 text-xs text-muted-foreground">
+                        <p className="text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">
                           {acTaskDetails.task.description}
                         </p>
                       )}
                       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        {acTaskDetails.comments.length > 0 && (
-                          <span className="inline-flex items-center gap-1">
-                            <MessageSquare className="h-3 w-3" />
-                            {acTaskDetails.comments.length} comment
-                            {acTaskDetails.comments.length === 1 ? "" : "s"} loaded
-                          </span>
+                        {acTaskDetails.task.assigneeName && (
+                          <span>Assignee: {acTaskDetails.task.assigneeName}</span>
                         )}
                         {acTaskDetails.task.taskUrl && (
                           <a
@@ -477,7 +478,10 @@ export function TaskPrPicker({
                           </a>
                         )}
                       </div>
+                      <ActiveCollabCommentsList comments={displayedComments} />
                     </div>
+                  ) : displayedComments.length > 0 ? (
+                    <ActiveCollabCommentsList comments={displayedComments} />
                   ) : null}
                 </div>
               )}

@@ -32,6 +32,7 @@ export const API = {
   TESTPILOT: {
     GENERATE: "testpilot-generate",
     ACTIVECOLLAB: "testpilot-activecollab",
+    CHAT: "testpilot-chat",
   },
 
   // Knowledge

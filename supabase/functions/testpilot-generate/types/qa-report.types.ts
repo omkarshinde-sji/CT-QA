@@ -20,6 +20,8 @@ export const ChangeItemSchema = z.object({
   whatToVerify: z.string(),
 });
 
+export const PROMPT_VERSION = "test-v10-feedback-dedupe";
+
 export const FeatureSummarySchema = z.object({
   summary: z.string(),
   before: z.string().optional(),
@@ -27,6 +29,8 @@ export const FeatureSummarySchema = z.object({
   userFlow: z.string().optional(),
   changes: z.array(ChangeItemSchema).optional(),
   totalChangedFiles: z.number().int().nonnegative().optional(),
+  qaRelevantFileCount: z.number().int().nonnegative().optional(),
+  excludedFiles: z.array(z.string()).optional(),
 });
 
 export const RequirementItemSchema = z.object({
@@ -147,6 +151,10 @@ export interface TestPilotContext {
     pathHints: string[];
     impactedModulesFromPaths: Array<{ moduleName: string; files: string[] }>;
   };
+  /** User-testable changed files (excludes package.json, lockfiles, etc.) */
+  qaRelevantFiles?: Array<{ filename: string; status: string; patch?: string }>;
+  /** Paths omitted from QA change areas */
+  excludedFiles?: string[];
 }
 
 export interface QaReportRecord {

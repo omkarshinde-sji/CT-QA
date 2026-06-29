@@ -8,6 +8,8 @@ import {
 } from "../types/qa-report.types.ts";
 import { buildTestPilotContext } from "../ai/context-builder.ts";
 import { runTestPilotAgent } from "../ai/testpilot-agent.ts";
+import { sanitizeQaReport } from "../ai/report-sanitizer.ts";
+import { enrichReportFromFeedback, getClientFeedbackItems } from "../ai/enrich-report-feedback.ts";
 
 export interface GenerateQaReportResult {
   success: boolean;
@@ -105,9 +107,16 @@ export async function generateQaReport(
       ctx.contextHash,
     );
     if (cached) {
+      const allPaths = ctx.pr.changedFiles.map((f) => f.filename);
+      const feedbackItems = getClientFeedbackItems(ctx);
+      const report = sanitizeQaReport(
+        enrichReportFromFeedback(ctx, recordToReport(cached)),
+        allPaths,
+        feedbackItems,
+      );
       return {
         success: true,
-        report: recordToReport(cached),
+        report,
         cached: true,
       };
     }
