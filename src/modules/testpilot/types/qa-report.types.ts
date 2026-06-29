@@ -26,6 +26,7 @@ export const FeatureSummarySchema = z.object({
   after: z.string().optional(),
   userFlow: z.string().optional(),
   changes: z.array(ChangeItemSchema).optional(),
+  totalChangedFiles: z.number().int().nonnegative().optional(),
 });
 
 export const RequirementItemSchema = z.object({

@@ -1,7 +1,11 @@
 import type { TestPilotContext, QaReport } from "../types/qa-report.types.ts";
 import { chatCompletion } from "../lib/chat-completion.ts";
 import { buildPromptMessages } from "./prompt-builder.ts";
-import { buildRetryPrompt, parseAndValidateQaReport } from "./output-parser.ts";
+import {
+  buildRetryPrompt,
+  parseAndValidateQaReport,
+  validateFileCoverage,
+} from "./output-parser.ts";
 
 const MAX_ATTEMPTS = 3;
 
@@ -21,23 +25,60 @@ export interface AgentRunResult {
   tokensUsed: number;
 }
 
+function attachFileCount(report: QaReport, totalChangedFiles: number): QaReport {
+  return {
+    ...report,
+    featureSummary: {
+      ...report.featureSummary,
+      totalChangedFiles,
+    },
+  };
+}
+
 export async function runTestPilotAgent(ctx: TestPilotContext): Promise<AgentRunResult> {
+  const allFilePaths = ctx.pr.changedFiles.map((f) => f.filename);
   const messages = buildPromptMessages(ctx);
   let lastErrors: string[] = [];
+  let totalTokens = 0;
+  let modelUsed = "gpt-4o-mini";
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const result = await chatCompletion({
       messages,
       temperature: 0.3,
-      max_tokens: 4000,
+      max_tokens: 12000,
     });
+
+    totalTokens += (result.input_tokens ?? 0) + (result.output_tokens ?? 0);
+    modelUsed = result.model;
 
     const parsed = parseAndValidateQaReport(result.content);
     if (parsed.success && parsed.report) {
+      const coverageErrors = validateFileCoverage(parsed.report, allFilePaths);
+      if (!coverageErrors.length) {
+        return {
+          report: attachFileCount(parsed.report, allFilePaths.length),
+          model: modelUsed,
+          tokensUsed: totalTokens,
+        };
+      }
+
+      lastErrors = coverageErrors;
+      console.warn(`[testpilot-agent] attempt ${attempt} incomplete coverage:`, coverageErrors);
+
+      if (attempt < MAX_ATTEMPTS) {
+        messages.push(
+          { role: "assistant", content: result.content },
+          { role: "user", content: buildRetryPrompt(coverageErrors) },
+        );
+        continue;
+      }
+
+      // Last attempt: return best effort but still attach file count for UI warning
       return {
-        report: parsed.report,
-        model: result.model,
-        tokensUsed: (result.input_tokens ?? 0) + (result.output_tokens ?? 0),
+        report: attachFileCount(parsed.report, allFilePaths.length),
+        model: modelUsed,
+        tokensUsed: totalTokens,
       };
     }
 
