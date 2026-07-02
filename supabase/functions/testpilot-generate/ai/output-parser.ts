@@ -66,7 +66,7 @@ export function buildRetryPrompt(errors: string[]): string {
   return `Your previous response was invalid. Fix these validation errors and return ONLY valid JSON:\n${errors.join("\n")}`;
 }
 
-/** Returns error messages when QA-relevant files are missing from changes[].files */
+/** Soft check — warns when no user-visible files are referenced (does not block generation). */
 export function validateFileCoverage(
   report: QaReport,
   qaRelevantPaths: string[],
@@ -80,17 +80,39 @@ export function validateFileCoverage(
     }
   }
 
-  const missing = qaRelevantPaths.filter((path) => !covered.has(path));
-  if (!missing.length) return [];
+  const changes = report.featureSummary.changes ?? [];
+  if (!changes.length) {
+    return [
+      "changes[] is empty — add user-visible feature areas with concrete before/after from the PR diff.",
+      "Do NOT create areas for SQL migrations, supabase/config.toml, or edge functions.",
+    ];
+  }
 
-  return [
-    `QA file coverage incomplete: ${missing.length} of ${qaRelevantPaths.length} QA-relevant files missing from changes[].files.`,
-    `Missing: ${missing.slice(0, 25).join(", ")}${missing.length > 25 ? ` …and ${missing.length - 25} more` : ""}`,
-    "Add change areas for each missing file. Do NOT add package.json, lockfiles, or config-only files.",
-  ];
+  const genericBefore = changes.filter((c) =>
+    /previous behavior before this pr|behavior before this client feedback/i.test(c.before)
+  );
+  if (genericBefore.length > 0) {
+    return [
+      `${genericBefore.length} change area(s) use generic placeholder before text.`,
+      "Rewrite before/after from the actual PR diff — describe what users see on screen.",
+    ];
+  }
+
+  return [];
 }
 
-/** Returns errors when ActiveCollab client feedback items are not reflected in the report. */
+/** Returns errors when negative/edge test sections are empty or too thin. */
+export function validateNegativeEdgeCoverage(report: QaReport): string[] {
+  const errors: string[] = [];
+  if (!report.negativeTests.length) {
+    errors.push("negativeTests is empty — add at least 3 tests for invalid inputs, empty states, and error handling.");
+  }
+  if (!report.edgeCases.length) {
+    errors.push("edgeCases is empty — add at least 2 tests for boundary values, precision limits, and unusual UI states.");
+  }
+  return errors;
+}
+
 export function validateFeedbackCoverage(
   ctx: TestPilotContext,
   report: QaReport,

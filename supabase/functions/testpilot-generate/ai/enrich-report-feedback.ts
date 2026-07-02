@@ -7,6 +7,7 @@ import {
   hasDedicatedChangeArea,
   hasDedicatedPositiveTest,
 } from "./client-feedback-parser.ts";
+import { enrichNegativeAndEdgeTests } from "./enrich-negative-edge-tests.ts";
 import { getQaRelevantPaths } from "./context-builder.ts";
 
 function truncate(text: string, max: number): string {
@@ -45,7 +46,7 @@ function buildPositiveTest(item: string): QaReport["positiveTests"][number] {
   return {
     title: `Verify client feedback: ${short}`,
     steps: [
-      "Log in and open the Call Spread Pricer (or screen named in the ActiveCollab task).",
+      "Log in and open the screen or module described in the ActiveCollab task.",
       `Navigate to the section described in client feedback: ${truncate(item, 150)}.`,
       "Compare the on-screen labels, values, and formatting to the client requirement.",
       "Record a screenshot if behavior matches the expected client feedback.",
@@ -55,13 +56,18 @@ function buildPositiveTest(item: string): QaReport["positiveTests"][number] {
   };
 }
 
-function buildChangeArea(item: string, files: string[]): NonNullable<QaReport["featureSummary"]["changes"]>[number] {
+function buildChangeArea(
+  item: string,
+  files: string[],
+  overallBefore?: string,
+): NonNullable<QaReport["featureSummary"]["changes"]>[number] {
+  const uiFiles = files.filter((f) => !f.endsWith(".sql") && !f.includes("supabase/"));
   return {
     area: truncate(item, 120),
-    files,
-    before: "Behavior before this client feedback was implemented.",
+    files: uiFiles,
+    before: overallBefore?.trim() || "Prior to this PR — compare with staging or the previous release.",
     after: item,
-    technicalNote: files.length ? files.join(", ") : "See PR diff for related files.",
+    technicalNote: uiFiles.length === 1 ? uiFiles[0] : uiFiles.length ? uiFiles.slice(0, 3).join(", ") : undefined,
     whatToVerify: `Confirm: ${item}`,
   };
 }
@@ -92,7 +98,7 @@ export function enrichReportFromFeedback(ctx: TestPilotContext, report: QaReport
     const needsTest = !hasDedicatedPositiveTest(item, positiveTests);
 
     if (needsChange) {
-      changes.push(buildChangeArea(item, files));
+      changes.push(buildChangeArea(item, files, report.featureSummary.before));
       addedChanges++;
     }
     if (needsTest) {
@@ -121,7 +127,7 @@ export function enrichReportFromFeedback(ctx: TestPilotContext, report: QaReport
 
   clientGroup.items = [...regressionItems];
 
-  return {
+  return enrichNegativeAndEdgeTests(ctx, {
     ...report,
     featureSummary: {
       ...report.featureSummary,
@@ -130,7 +136,7 @@ export function enrichReportFromFeedback(ctx: TestPilotContext, report: QaReport
     positiveTests,
     requirementBreakdown,
     regressionChecklist,
-  };
+  });
 }
 
 export function getClientFeedbackItems(ctx: TestPilotContext): string[] {

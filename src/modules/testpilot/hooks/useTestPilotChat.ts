@@ -63,10 +63,11 @@ export function useTestPilotChat(options: UseTestPilotChatOptions) {
   const reportForChat: QaReport | undefined = useMemo(() => {
     if (!options.report) return undefined;
     return prepareReportForDisplay(options.report, {
+      taskTitle: options.taskTitle,
       taskDescription: options.taskDescription,
       taskComments: options.taskComments,
     });
-  }, [options.report, options.taskDescription, options.taskComments]);
+  }, [options.report, options.taskTitle, options.taskDescription, options.taskComments]);
 
   const sendMessage = useCallback(
     async (text: string) => {

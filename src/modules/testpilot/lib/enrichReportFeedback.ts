@@ -66,12 +66,13 @@ export function enrichReportFromFeedback(
     const needsTest = !hasDedicatedPositiveTest(item, positiveTests);
 
     if (needsChange) {
+      const uiFiles = files.filter((f) => !f.endsWith(".sql") && !f.includes("supabase/"));
       changes.push({
         area: truncate(item, 120),
-        files,
-        before: "Behavior before this client feedback was implemented.",
+        files: uiFiles,
+        before: report.featureSummary.before?.trim() || "Prior to this PR — compare with staging or the previous release.",
         after: item,
-        technicalNote: files.length ? files.join(", ") : "See PR diff for related files.",
+        technicalNote: uiFiles.length ? uiFiles.slice(0, 3).join(", ") : undefined,
         whatToVerify: `Confirm: ${item}`,
       });
     }
@@ -79,7 +80,7 @@ export function enrichReportFromFeedback(
       positiveTests.push({
         title: `Verify client feedback: ${truncate(item, 90)}`,
         steps: [
-          "Log in and open the Call Spread Pricer (or screen named in the ActiveCollab task).",
+          "Log in and open the screen or module described in the ActiveCollab task.",
           `Navigate to the section described in client feedback: ${truncate(item, 150)}.`,
           "Compare the on-screen labels, values, and formatting to the client requirement.",
           "Record a screenshot if behavior matches the expected client feedback.",

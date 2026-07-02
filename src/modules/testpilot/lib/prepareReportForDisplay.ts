@@ -1,11 +1,13 @@
 import type { QaReport, TaskCommentInput } from "../types/qa-report.types";
 import { extractClientFeedbackItems, normalizeForMatch } from "./clientFeedbackParser";
 import { enrichReportFromFeedback } from "./enrichReportFeedback";
-import { isJunkChangeArea, isQaRelevantChangedFile, sanitizeReportForDisplay } from "./qaRelevantFiles";
+import { enrichNegativeAndEdgeTests } from "./enrichNegativeEdgeTests";
+import { isJunkChangeArea, isPlaceholderChange, isQaRelevantChangedFile, sanitizeReportForDisplay } from "./qaRelevantFiles";
 
 export interface PrepareReportOptions {
   taskDescription?: string;
   taskComments?: TaskCommentInput[];
+  taskTitle?: string;
 }
 
 /** Full pipeline: parse AC feedback → fill gaps → sanitize for display. */
@@ -15,11 +17,18 @@ export function prepareReportForDisplay(
 ): QaReport {
   const description = options.taskDescription ?? "";
   const comments = options.taskComments ?? [];
+  const taskTitle = options.taskTitle ?? "";
   const feedbackItems = extractClientFeedbackItems(description, comments);
 
   const enriched = enrichReportFromFeedback(report, description, comments);
-  const withFiles = ensureChangeAreaFiles(enriched, feedbackItems);
-  return sanitizeReportForDisplay(withFiles, feedbackItems);
+  const withTests = enrichNegativeAndEdgeTests(enriched, taskTitle, description, comments);
+  const withFiles = ensureChangeAreaFiles(withTests, feedbackItems);
+  const sanitized = sanitizeReportForDisplay(withFiles, feedbackItems);
+  const changes = (sanitized.featureSummary.changes ?? []).filter((c) => !isPlaceholderChange(c));
+  return {
+    ...sanitized,
+    featureSummary: { ...sanitized.featureSummary, changes },
+  };
 }
 
 function guessFilesForArea(area: string, qaPaths: string[]): string[] {

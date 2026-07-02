@@ -17,6 +17,7 @@ import { extractClientFeedbackItems } from "../lib/clientFeedbackParser";
 
 interface QAReportViewerProps {
   report: QaReportWithMeta;
+  taskTitle?: string;
   taskDescription?: string;
   taskComments?: Array<{ author: string; body: string; createdAt: string }>;
 }
@@ -128,7 +129,7 @@ function ChangeCard({ change, index }: { change: NonNullable<QaReportWithMeta["f
         </div>
       </div>
 
-      {change.technicalNote && (
+      {change.technicalNote && !/\.sql$|supabase\/|migrations\//i.test(change.technicalNote) && (
         <div className="mt-3 flex gap-2 rounded-lg border border-dashed bg-muted/30 px-3 py-2.5">
           <FileCode2 className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
           <div>
@@ -153,8 +154,8 @@ function ChangeCard({ change, index }: { change: NonNullable<QaReportWithMeta["f
   );
 }
 
-export function QAReportViewer({ report, taskDescription = "", taskComments = [] }: QAReportViewerProps) {
-  const displayReport = prepareReportForDisplay(report, { taskDescription, taskComments });
+export function QAReportViewer({ report, taskTitle = "", taskDescription = "", taskComments = [] }: QAReportViewerProps) {
+  const displayReport = prepareReportForDisplay(report, { taskTitle, taskDescription, taskComments });
   const feedbackCount = extractClientFeedbackItems(taskDescription, taskComments).length;
   const fs = displayReport.featureSummary;
   const hasChanges = Boolean(fs.changes?.length);
@@ -168,7 +169,9 @@ export function QAReportViewer({ report, taskDescription = "", taskComments = []
     (fs.changes ?? []).flatMap((c) => c.files ?? []),
   ).size;
   const coverageIncomplete =
-    qaFileCount > 0 && filesInChanges < qaFileCount;
+    qaFileCount > 0 &&
+    filesInChanges < qaFileCount &&
+    filesInChanges < Math.max(1, Math.floor(qaFileCount * 0.5));
   const defaultTab = hasChanges ? "changes" : "tests";
 
   return (
@@ -179,7 +182,8 @@ export function QAReportViewer({ report, taskDescription = "", taskComments = []
           <span className="hidden sm:inline">Changes</span>
           {hasChanges && (
             <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
-              {changeCount} areas · {qaFileCount} QA files
+              {changeCount} areas
+              {qaFileCount > 0 ? ` · ${qaFileCount} feature files` : ""}
               {feedbackCount > 0 ? ` · ${feedbackCount} AC items` : ""}
               {totalFiles != null && totalFiles > qaFileCount ? ` (${totalFiles} in PR)` : ""}
             </Badge>
@@ -205,8 +209,8 @@ export function QAReportViewer({ report, taskDescription = "", taskComments = []
           <Alert variant="default" className="border-amber-500/40 bg-amber-50/50 dark:bg-amber-950/20">
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription className="text-sm">
-              This report covers {filesInChanges} of {qaFileCount} QA-relevant files. Click{" "}
-              <strong>Regenerate</strong> for a complete report.
+              This report references {filesInChanges} of {qaFileCount} user-visible files. Click{" "}
+              <strong>Regenerate</strong> if any feature area is missing from the before/after cards.
             </AlertDescription>
           </Alert>
         )}
@@ -214,7 +218,7 @@ export function QAReportViewer({ report, taskDescription = "", taskComments = []
           <Alert className="border-muted bg-muted/30">
             <FileCode2 className="h-4 w-4" />
             <AlertDescription className="text-sm text-muted-foreground">
-              {excludedCount} non-QA file{excludedCount > 1 ? "s" : ""} omitted from changes (e.g.{" "}
+              {excludedCount} technical/config file{excludedCount > 1 ? "s" : ""} omitted from Changes (migrations, dependencies, CI — e.g.{" "}
               {fs.excludedFiles!.slice(0, 3).map((f) => f.split("/").pop()).join(", ")}
               {excludedCount > 3 ? "…" : ""}) — dependency and config updates only.
             </AlertDescription>

@@ -1,6 +1,7 @@
 import type { TestPilotContext } from "../types/qa-report.types.ts";
 import { getOnboardingContext } from "../services/project-context.service.ts";
 import { getQaRelevantPaths } from "./context-builder.ts";
+import { isInfrastructureFile } from "../services/qa-relevant-files.ts";
 import {
   extractClientFeedbackItems,
   formatFeedbackChecklist,
@@ -44,41 +45,62 @@ Return ONLY valid JSON matching this exact schema (no markdown, no code fences):
 }
 
 WRITING RULES (critical):
-1. featureSummary.changes must cover EVERY file in the QA FILES MANIFEST — NOT package.json, lockfiles, or config-only files.
-2. NEVER create change areas for: package.json updates, lockfile changes, eslint/tsconfig-only edits, README, CI workflows.
-3. **EVERY numbered item in MANDATORY CLIENT FEEDBACK CHECKLIST must appear ONCE** in changes[] (use the exact comment wording for area/after) AND have exactly one matching positiveTests entry. Do NOT paraphrase into extra duplicate areas for the same item.
-4. requirementBreakdown and regressionChecklist must list ALL client feedback items from comments — not a summary subset.
-5. userFlow must be a numbered QA walkthrough covering the main client feedback themes.
-6. Group only files that are ONE indivisible user-visible change.
-7. Every before/after must be concrete and testable — visible behavior, not "updated package.json".
-8. Write at least one positive test per client feedback item. Scale negative/edge tests with feedback count.
-9. Test steps must reference real UI labels from client comments (Delta, Vega, Volatility Spread, Clear Plot, Borrow Cost, Pricing, etc.).`;
+1. featureSummary.changes must describe USER-VISIBLE behavior grouped by feature area (pages, UI, workflows) — NOT one card per file.
+2. NEVER create change areas for: SQL migrations, supabase/config.toml, edge functions, package.json, lockfiles, eslint/tsconfig-only edits, README, CI workflows.
+3. Read the actual PR diff patches to write concrete before/after — NEVER use generic placeholders like "Previous behavior before this PR" or "Updated per PR diff".
+4. **EVERY numbered item in MANDATORY CLIENT FEEDBACK CHECKLIST must appear ONCE** in changes[] (use the exact comment wording for area/after) AND have exactly one matching positiveTests entry.
+5. requirementBreakdown and regressionChecklist must list ALL client feedback items from comments — not a summary subset.
+6. userFlow must be a numbered QA walkthrough covering the main client feedback themes.
+7. Group related UI files (page + component + hook) into ONE change area when they deliver a single user-visible feature.
+8. Every before/after must describe what a QA tester sees on screen — labels, buttons, navigation, data shown — not file names or code structure.
+9. technicalNote is optional; use it only for a short component or API name, never raw migration paths.
+10. Write at least one positive test per client feedback item.
+11. negativeTests: minimum 3 — invalid inputs, empty states, error handling, disabled controls when data is missing.
+12. edgeCases: minimum 2 — boundary values (zero, max), decimal precision, toggle edge behavior, refresh mid-flow.
+13. Test steps must reference real UI labels from client comments and PR diffs.`;
 }
 
-function buildFileManifest(ctx: TestPilotContext): { qaBlock: string; excludedBlock: string; qaCount: number } {
+function buildFileManifest(ctx: TestPilotContext): {
+  qaBlock: string;
+  excludedBlock: string;
+  technicalBlock: string;
+  qaCount: number;
+} {
   const qaPaths = new Set(getQaRelevantPaths(ctx));
   const qaFiles = ctx.pr.changedFiles.filter((f) => qaPaths.has(f.filename));
+  const technical = ctx.pr.changedFiles
+    .filter((f) => isInfrastructureFile(f.filename))
+    .map((f) => f.filename);
   const excluded = ctx.excludedFiles?.length
     ? ctx.excludedFiles
-    : ctx.pr.changedFiles.filter((f) => !qaPaths.has(f.filename)).map((f) => f.filename);
+    : ctx.pr.changedFiles
+      .filter((f) => !qaPaths.has(f.filename) && !isInfrastructureFile(f.filename))
+      .map((f) => f.filename);
 
   const qaBlock = qaFiles.length
     ? qaFiles.map((f, i) => `${i + 1}. [${f.status}] ${f.filename}`).join("\n")
-    : "No QA-relevant files.";
+    : "No user-visible QA files.";
 
   const excludedBlock = excluded.length
     ? excluded.map((f) => `- ${f}`).join("\n")
     : "None";
 
-  return { qaBlock, excludedBlock, qaCount: qaFiles.length };
+  const technicalBlock = technical.length
+    ? technical.map((f) => `- ${f}`).join("\n")
+    : "None";
+
+  return { qaBlock, excludedBlock, technicalBlock, qaCount: qaFiles.length };
 }
 
 function buildPrSections(ctx: TestPilotContext): string {
-  const { qaBlock, excludedBlock, qaCount } = buildFileManifest(ctx);
-  const manifestBlock = `**QA FILES MANIFEST (${qaCount} files — EVERY path below MUST appear in changes[].files):**
+  const { qaBlock, excludedBlock, technicalBlock, qaCount } = buildFileManifest(ctx);
+  const manifestBlock = `**USER-VISIBLE FILES (${qaCount} — reference in changes[].files when relevant; group by feature, not one card per file):**
 ${qaBlock}
 
-**EXCLUDED from changes[] (do NOT create areas for these — dependency/config only):**
+**TECHNICAL / INFRASTRUCTURE (for risk context only — do NOT create changes[] entries for these):**
+${technicalBlock}
+
+**EXCLUDED from changes[] (dependencies, config tooling):**
 ${excludedBlock}`;
 
   const qaPathSet = new Set(getQaRelevantPaths(ctx));
@@ -223,8 +245,8 @@ ${getOnboardingContext()}
 
 1. Read ActiveCollab task FIRST — every numbered checklist item must appear in the report.
 2. Nested comment lines (e.g. Analysis section → Delta, Vega, Volatility Spread) are SEPARATE items — do not merge or skip them.
-3. Use GitHub diffs to fill accurate before/after and file paths.
-4. changes[] must include all ${qaCount} QA manifest files. Do NOT add package.json or lockfiles.
+3. Use GitHub diffs to fill accurate, concrete before/after describing what users see on screen.
+4. changes[] must group user-visible behavior by feature area. Do NOT add migrations, config.toml, or edge functions to changes[].
 5. requirementBreakdown: one entry per client feedback item with acceptanceCriteria.
 6. regressionChecklist: every client feedback item as a checkbox item.
 

@@ -20,7 +20,7 @@ export const ChangeItemSchema = z.object({
   whatToVerify: z.string(),
 });
 
-export const PROMPT_VERSION = "test-v10-feedback-dedupe";
+export const PROMPT_VERSION = "test-v13-negative-edge-tests";
 
 export const FeatureSummarySchema = z.object({
   summary: z.string(),
