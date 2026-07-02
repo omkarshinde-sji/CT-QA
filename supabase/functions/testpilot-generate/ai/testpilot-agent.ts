@@ -9,6 +9,7 @@ import {
   parseAndValidateQaReport,
   validateFileCoverage,
   validateFeedbackCoverage,
+  validateNegativeEdgeCoverage,
 } from "./output-parser.ts";
 
 const MAX_ATTEMPTS = 3;
@@ -64,6 +65,7 @@ export async function runTestPilotAgent(ctx: TestPilotContext): Promise<AgentRun
       const coverageErrors = [
         ...validateFileCoverage(parsed.report, qaRelevantPaths),
         ...validateFeedbackCoverage(ctx, parsed.report),
+        ...validateNegativeEdgeCoverage(parsed.report),
       ];
       if (!coverageErrors.length) {
         return {

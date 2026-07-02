@@ -308,11 +308,13 @@ export default function TestPilotPage() {
                   report={report}
                   onRegenerate={() => handleGenerate(true)}
                   isRegenerating={generate.isPending}
+                  taskTitle={taskTitle}
                   taskDescription={taskDescription}
                   taskComments={acTaskComments}
                 />
                 <QAReportViewer
                   report={report}
+                  taskTitle={taskTitle}
                   taskDescription={taskDescription}
                   taskComments={acTaskComments}
                 />

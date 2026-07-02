@@ -36,6 +36,7 @@ interface ReportExportActionsProps {
   report: QaReportWithMeta;
   onRegenerate: () => void;
   isRegenerating?: boolean;
+  taskTitle?: string;
   taskDescription?: string;
   taskComments?: TaskCommentInput[];
 }
@@ -44,13 +45,14 @@ export function ReportExportActions({
   report,
   onRegenerate,
   isRegenerating,
+  taskTitle = "",
   taskDescription = "",
   taskComments = [],
 }: ReportExportActionsProps) {
   const [exporting, setExporting] = useState<string | null>(null);
   const prLabel = formatPrNumbersLabel(report.prNumbers?.length ? report.prNumbers : [report.prNumber]);
   const filename = `qa-report-${report.prNumbers?.length ? report.prNumbers.join("-") : report.prNumber}`;
-  const prepareOptions: PrepareReportOptions = { taskDescription, taskComments };
+  const prepareOptions: PrepareReportOptions = { taskTitle, taskDescription, taskComments };
 
   const runExport = async (key: string, fn: () => void | Promise<void>, successMsg: string) => {
     setExporting(key);
